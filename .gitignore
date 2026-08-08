@@ -1,0 +1,40 @@
+# 大目录：模型权重 + ComfyUI 便携版运行时（不入库）
+models/
+ComfyUI_windows_portable/
+
+# 下载工具与 CPython 源码树（工具，非本项目脚本）
+comfyui_download/aria2/
+comfyui_download/cpython-3.13.14/
+
+# 模型权重文件
+*.safetensors
+*.ckpt
+
+# 本地配置
+.claude/settings.local.json
+
+# 日志与诊断输出
+*.log
+*.csv
+bf16_compare*.txt
+pip_before_sage.txt
+py313_names.txt
+
+# 生成的视频帧 / 图片
+*.png
+*.jpg
+*.jpeg
+
+# 二进制、安装包、whl
+*.exe
+*.tar.gz
+*.whl
+*.lib
+*.exp
+*.def
+
+# 参考张量 / 大 json 产物
+*.pt
+object_info.json
+profile_summary.json
+profile_trace.json
