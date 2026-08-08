@@ -1,14 +1,22 @@
-# 大目录：模型权重 + ComfyUI 便携版运行时（不入库）
-models/
-ComfyUI_windows_portable/
+# 顶层 models 目录（模型权重，不入库）
+/models/
+
+# ComfyUI 便携版：排除生成输出、模型权重、Python 运行时，其余（源码/自定义节点/脚本）入库
+/ComfyUI_windows_portable/ComfyUI/output/
+/ComfyUI_windows_portable/python_embeded/
 
 # 下载工具与 CPython 源码树（工具，非本项目脚本）
 comfyui_download/aria2/
 comfyui_download/cpython-3.13.14/
 
-# 模型权重文件
+# 模型权重文件（含 ComfyUI/models 下，目录结构靠 .gitkeep 保留）
 *.safetensors
 *.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
 
 # 本地配置
 .claude/settings.local.json
@@ -34,7 +42,6 @@ py313_names.txt
 *.def
 
 # 参考张量 / 大 json 产物
-*.pt
 object_info.json
 profile_summary.json
 profile_trace.json
