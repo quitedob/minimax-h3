@@ -82,8 +82,22 @@ def _video_span(layout, latent_t, latent_h, latent_w):
     return start, stop, grid
 
 
+# Coexistence with h3_motion_context (NikoDemon80/ComfyUI-H3-Motion-Context):
+# that pack rewrites PackedLayout.__init__ to allow interior keyframe anchors
+# for clip chaining, and refuses to run if another pack already owns the method.
+# The Morton span we register here is only needed for token reordering + the
+# conditioning sink; the Sol-Attn attention kernel is patched independently and
+# still runs. Skipping the layout patch lets h3_motion_context own it; Morton
+# and the sink degrade gracefully via the "no layout registered" fallback.
+# Flip to False to restore SolAttn's Morton layout ownership.
+# 2026-08-11: set to False (full SolAttn; H3-Motion-Context clip chaining off).
+_SKIP_LAYOUT_PATCH = False
+
+
 def _patch_packed_layout(module):
     """Register the video span of every PackedLayout built, without mutating it."""
+    if _SKIP_LAYOUT_PATCH:
+        return
     layout_cls = getattr(module, "PackedLayout", None)
     if layout_cls is None:
         raise RuntimeError(f"{module.__name__} has no PackedLayout")

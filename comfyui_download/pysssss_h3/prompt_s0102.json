@@ -1,0 +1,453 @@
+{
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+  }
+ },
+ "4": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+  }
+ },
+ "5": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "res_multistep"
+  }
+ },
+ "110": {
+  "class_type": "MiniMaxH3ImageToVideo",
+  "inputs": {
+   "prompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, with a single 2D-animated element composited into the live-action frame, a medium shot frames a narrow 1910s boarding-house bedroom at rainy dawn, photoreal and desaturated in cold grey-green, lit only by one tall rain-streaked window, with peeling wallpaper, a heavy dark wooden bed, a small table stacked with folded cloth samples, a framed magazine cut-out on the wall and three closed doors, carrying visible 35mm grain. Lying on the bed on his armoured back is Gregor, rendered as a flat 2D hand-drawn cel-animated beetle with bold black ink outlines, simple cel shading, a domed brown shell, a segmented belly divided by stiff arched ridges, and many thin jointed legs, laid over the photoreal set like an animation cel with no blending between the two. The camera pushes in with small amplitude at slow speed toward the shell, which rises and falls faintly. A calm, low, measured middle-aged male voice (S1) says in an off-screen voiceover: <d>[Chinese] 一天早晨，格里高尔从不安的梦中醒来，发现自己变成了一只巨大的甲虫。他仰面躺着，背壳坚硬如铁。稍一抬头，就看见隆起的褐色肚皮，被一道道弓形硬痕分成数块。</d> while the beetle's mandibles remain completely closed and no character on screen moves their mouth. The beetle lifts its head a little and the ridged brown belly comes into view.\n\noverall_soundscape: Steady rain taps a tin window ledge and runs down the glass throughout. A slow clock ticks in the room, and dry chitin scrapes and clicks against bed linen and floorboards. The room tone stays quiet with a boxy indoor reverb.\n\nnon_diegetic_music: A single sustained low cello note at a very slow tempo, joined by a faint high metallic shimmer that holds at a constant low volume and does not swell.",
+   "width": 864,
+   "height": 480,
+   "length": 124,
+   "clip": [
+    "2",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "111": {
+  "class_type": "EasyCache",
+  "inputs": {
+   "reuse_threshold": 0.3,
+   "start_percent": 0.2,
+   "end_percent": 0.9,
+   "verbose": false,
+   "model": [
+    "1",
+    0
+   ]
+  }
+ },
+ "112": {
+  "class_type": "PathchSageAttentionKJ",
+  "inputs": {
+   "sage_attention": "auto",
+   "allow_compile": false,
+   "model": [
+    "111",
+    0
+   ]
+  }
+ },
+ "113": {
+  "class_type": "SolAttnPatch",
+  "inputs": {
+   "tau": 1.2,
+   "start_percent": 0.2,
+   "end_percent": 0.9,
+   "min_tokens": 4096,
+   "int8_qk": true,
+   "sink_conditioning": "exact_kv",
+   "morton": true,
+   "morton_curve": "3d",
+   "verbose": true,
+   "use_tma": false,
+   "model": [
+    "112",
+    0
+   ]
+  }
+ },
+ "114": {
+  "class_type": "BasicScheduler",
+  "inputs": {
+   "scheduler": "simple",
+   "steps": 20,
+   "denoise": 1,
+   "model": [
+    "113",
+    0
+   ]
+  }
+ },
+ "115": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 1469366273853784800
+  }
+ },
+ "116": {
+  "class_type": "BasicGuider",
+  "inputs": {
+   "model": [
+    "113",
+    0
+   ],
+   "conditioning": [
+    "110",
+    0
+   ]
+  }
+ },
+ "118": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "115",
+    0
+   ],
+   "guider": [
+    "116",
+    0
+   ],
+   "sampler": [
+    "5",
+    0
+   ],
+   "sigmas": [
+    "114",
+    0
+   ],
+   "latent_image": [
+    "110",
+    1
+   ]
+  }
+ },
+ "119": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "118",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "120": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "118",
+    0
+   ],
+   "vae": [
+    "4",
+    0
+   ]
+  }
+ },
+ "121": {
+  "class_type": "MiniMaxH3MotionContextTrim",
+  "inputs": {
+   "trim_frames": 0,
+   "fps": 24,
+   "match_tail": true,
+   "images": [
+    "119",
+    0
+   ],
+   "audio": [
+    "120",
+    0
+   ]
+  }
+ },
+ "122": {
+  "class_type": "CreateVideo",
+  "inputs": {
+   "fps": 24,
+   "bit_depth": 8,
+   "images": [
+    "121",
+    0
+   ],
+   "audio": [
+    "121",
+    1
+   ]
+  }
+ },
+ "123": {
+  "class_type": "SaveVideo",
+  "inputs": {
+   "filename_prefix": "video/Kafka_T2V/clip01",
+   "format": "auto",
+   "codec": "auto",
+   "video": [
+    "122",
+    0
+   ]
+  }
+ },
+ "210": {
+  "class_type": "MiniMaxH3ImageToVideo",
+  "inputs": {
+   "prompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, with a single 2D-animated element composited into the live-action frame, a medium shot continues without a cut from the previous moment in a narrow 1910s boarding-house bedroom at rainy dawn, photoreal and desaturated in cold grey-green, lit only by one tall rain-streaked window, with peeling wallpaper, a heavy dark wooden bed, a small table stacked with folded cloth samples, a framed magazine cut-out on the wall and three closed doors, carrying visible 35mm grain. Gregor remains the only 2D element, a flat 2D hand-drawn cel-animated beetle with bold black ink outlines, simple cel shading, a domed brown shell, a segmented belly divided by stiff arched ridges, and many thin jointed legs, laid over the photoreal set like an animation cel with no blending between the two, still on his armoured back. The camera holds a static shot while his many thin jointed legs wave helplessly in the air above him, drawn flat against the photoreal ceiling, then pulls out with small amplitude at slow speed to take in the whole small room. A calm, low, measured middle-aged male voice (S1) says in an off-screen voiceover: <d>[Chinese] 许多条细得可怜的腿，在他眼前无助地舞动。这分明是他自己的房间，一间普通的、稍嫌狭小的人的卧室，四面墙壁再熟悉不过。墙上还挂着他从画报上剪下的那幅画。</d> while the beetle's mandibles remain completely closed and no character on screen moves their mouth. The four familiar walls and the framed magazine cut-out above the bed settle into the frame.\n\noverall_soundscape: Steady rain taps a tin window ledge and runs down the glass throughout. A slow clock ticks in the room, and dry chitin scrapes and clicks against bed linen and floorboards. The room tone stays quiet with a boxy indoor reverb.\n\nnon_diegetic_music: A single sustained low cello note at a very slow tempo, joined by a faint high metallic shimmer that holds at a constant low volume and does not swell.",
+   "width": 864,
+   "height": 480,
+   "length": 124,
+   "clip": [
+    "2",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "211": {
+  "class_type": "EasyCache",
+  "inputs": {
+   "reuse_threshold": 0.3,
+   "start_percent": 0.2,
+   "end_percent": 0.9,
+   "verbose": false,
+   "model": [
+    "1",
+    0
+   ]
+  }
+ },
+ "212": {
+  "class_type": "PathchSageAttentionKJ",
+  "inputs": {
+   "sage_attention": "auto",
+   "allow_compile": false,
+   "model": [
+    "211",
+    0
+   ]
+  }
+ },
+ "213": {
+  "class_type": "SolAttnPatch",
+  "inputs": {
+   "tau": 1.2,
+   "start_percent": 0.2,
+   "end_percent": 0.9,
+   "min_tokens": 4096,
+   "int8_qk": true,
+   "sink_conditioning": "exact_kv",
+   "morton": true,
+   "morton_curve": "3d",
+   "verbose": true,
+   "use_tma": false,
+   "model": [
+    "212",
+    0
+   ]
+  }
+ },
+ "214": {
+  "class_type": "BasicScheduler",
+  "inputs": {
+   "scheduler": "simple",
+   "steps": 20,
+   "denoise": 1,
+   "model": [
+    "213",
+    0
+   ]
+  }
+ },
+ "215": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 4026539565450560500
+  }
+ },
+ "216": {
+  "class_type": "BasicGuider",
+  "inputs": {
+   "model": [
+    "213",
+    0
+   ],
+   "conditioning": [
+    "217",
+    0
+   ]
+  }
+ },
+ "217": {
+  "class_type": "MiniMaxH3MotionContext",
+  "inputs": {
+   "context_length": "22",
+   "audio_context_length": 22,
+   "conditioning": [
+    "210",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ],
+   "latent": [
+    "210",
+    1
+   ],
+   "context_latent": [
+    "118",
+    0
+   ]
+  }
+ },
+ "218": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "215",
+    0
+   ],
+   "guider": [
+    "216",
+    0
+   ],
+   "sampler": [
+    "5",
+    0
+   ],
+   "sigmas": [
+    "214",
+    0
+   ],
+   "latent_image": [
+    "210",
+    1
+   ]
+  }
+ },
+ "219": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "218",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "220": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "218",
+    0
+   ],
+   "vae": [
+    "4",
+    0
+   ]
+  }
+ },
+ "221": {
+  "class_type": "MiniMaxH3MotionContextTrim",
+  "inputs": {
+   "trim_frames": [
+    "217",
+    1
+   ],
+   "fps": 24,
+   "match_tail": true,
+   "images": [
+    "219",
+    0
+   ],
+   "audio": [
+    "220",
+    0
+   ]
+  }
+ },
+ "222": {
+  "class_type": "CreateVideo",
+  "inputs": {
+   "fps": 24,
+   "bit_depth": 8,
+   "images": [
+    "221",
+    0
+   ],
+   "audio": [
+    "221",
+    1
+   ]
+  }
+ },
+ "223": {
+  "class_type": "SaveVideo",
+  "inputs": {
+   "filename_prefix": "video/Kafka_T2V/clip02",
+   "format": "auto",
+   "codec": "auto",
+   "video": [
+    "222",
+    0
+   ]
+  }
+ },
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+   "type": "minimax",
+   "device": "default"
+  }
+ },
+ "424": {
+  "class_type": "MiniMaxH3MotionContextSaveLatent",
+  "inputs": {
+   "filename_prefix": "h3_context/Kafka_T2V/clip",
+   "clip_index": 1,
+   "latent": [
+    "118",
+    0
+   ]
+  }
+ },
+ "425": {
+  "class_type": "MiniMaxH3MotionContextSaveLatent",
+  "inputs": {
+   "filename_prefix": "h3_context/Kafka_T2V/clip",
+   "clip_index": 2,
+   "latent": [
+    "218",
+    0
+   ]
+  }
+ }
+}

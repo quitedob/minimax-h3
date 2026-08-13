@@ -218,3 +218,34 @@
 - 产物:`output/video/MiniMax_H3_solattn_20step_00001_.mp4`;监控数据:`comfyui_download/solattn_20step_monitor.csv`。
 
 *文档更新至 2026-08-05 19:30*
+
+---
+
+## 阶段 7:pysssss H3 无缝拼接工作流 + 耗时实测(2026-08-11)
+
+研究了 ComfyUI-wiki 的 `pysssss-workflows`(卡夫卡《变形记》多段无缝拼接,T2V/R2V),完整报告见 `docs/research-pysssss-h3-workflows.md`。
+
+### 环境落地(全部复用现有 python_embeded 和模型)
+- 三节点包隔离克隆到 `F:\python\h3\example\`(rgthree-comfy / ComfyUI-H3-Motion-Context / ComfyUI-KJNodes),`extra_model_paths.yaml` 注册为额外 custom_nodes 目录,不动 `custom_nodes\`。
+- 补 KJNodes 依赖(color-matcher / matplotlib / mss / opencv-python-headless);sageattention 原本就有。
+- 三个 `*.bat` 加 `chcp 65001` + `PYTHONUTF8=1`(修 rgthree 🎉 在 GBK 控制台崩启动);`comfyui-frontend-package` 1.47.11→1.48.7(修前后端版本警告)。
+- 所有工作流/模板的模型名从 nvfp4/int8 批量映射到本地 fp8_scaled / int8_convrot。
+
+### 耗时实测(864×480 / 124帧 / 20步,RTX 5060 Ti 16GB)
+| 运行 | 总耗时 | 模型初始化 | 采样 | 其余 |
+|---|---|---|---|---|
+| 段01 全 SolAttn(morton/sink 开) | **11:55** | 3:30 | 2:58(20步) | ~5:27(解码+音频+合成+保存) |
+| 段01 共存降级版(morton/sink 关) | 12:55 | 4:19 | ~2:40 | ~5:50 |
+| 段01+段02 无缝链条 | 16:14 | 3:51 | 段01+段02 | 两段解码+合成 |
+
+- **采样步速**:dense 阶段 ~16.5s/步(EasyCache 前 20% 未复用),跨步复用后降到 **~3.6-5.4s/步**。
+- **结论**:morton/sink 开关对耗时几乎无影响(全 SolAttn 反比降级版快 1 分钟,因 triton autotune 缓存命中);相对纯 fp8 基线采样 4:15,`SolAttn+EasyCache` 采样 2:58,**省 ~30%**。
+- 上表均为**冷启动**(改配置重启 ComfyUI 需重载模型 3-4 分钟);热启动单段 ≈ 8.5 分钟(采样~3 分 + 解码~5 分半)。
+
+### SolAttn / H3-Motion-Context 二选一开关
+两个包都要独占 `PackedLayout.__init__`,无法共存。开关在 `custom_nodes\ComfyUI-SolAttn_triton\_morton_h3.py` 的 `_SKIP_LAYOUT_PATCH`:
+- **True** → SolAttn 不接管布局(注意力内核照常,morton/sink 停)→ H3-Motion-Context 无缝链条可用。
+- **False(当前)** → SolAttn 全开(morton + conditioning sink)→ 链条停用。
+- 切换后需重启 ComfyUI。已验证两档均输出健康(std 45.4~46.5、~1.7 万唯一色、运动曲线正常)。链条档接缝:clip01 末帧 vs clip02 头帧均差 4.09/255(内部相邻仅 2.09)→ 视觉连续。
+
+*文档更新至 2026-08-11*

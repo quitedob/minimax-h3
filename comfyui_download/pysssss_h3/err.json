@@ -1,0 +1,43 @@
+{
+ "123": {
+  "errors": [
+   {
+    "type": "exception_during_validation",
+    "message": "Exception when validating node",
+    "details": "122",
+    "extra_info": {
+     "exception_type": "KeyError",
+     "traceback": [
+      "  File \"F:\\python\\h3\\ComfyUI_windows_portable\\ComfyUI\\execution.py\", line 1184, in validate_prompt\n    m = await validate_inputs(prompt_id, prompt, o, validated)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+      "  File \"F:\\python\\h3\\ComfyUI_windows_portable\\ComfyUI\\execution.py\", line 933, in validate_inputs\n    o_class_type = prompt[o_id]['class_type']\n                   ~~~~~~^^^^^^\n"
+     ]
+    }
+   }
+  ],
+  "dependent_outputs": [
+   "123",
+   "424"
+  ],
+  "class_type": "SaveVideo"
+ },
+ "424": {
+  "errors": [
+   {
+    "type": "exception_during_validation",
+    "message": "Exception when validating node",
+    "details": "118",
+    "extra_info": {
+     "exception_type": "KeyError",
+     "traceback": [
+      "  File \"F:\\python\\h3\\ComfyUI_windows_portable\\ComfyUI\\execution.py\", line 1184, in validate_prompt\n    m = await validate_inputs(prompt_id, prompt, o, validated)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+      "  File \"F:\\python\\h3\\ComfyUI_windows_portable\\ComfyUI\\execution.py\", line 933, in validate_inputs\n    o_class_type = prompt[o_id]['class_type']\n                   ~~~~~~^^^^^^\n"
+     ]
+    }
+   }
+  ],
+  "dependent_outputs": [
+   "424"
+  ],
+  "class_type": "MiniMaxH3MotionContextSaveLatent"
+ }
+}
