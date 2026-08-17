@@ -158,3 +158,38 @@
 - 本地验证(权威):ComfyUI 源码逐行确认 H3 attention 分发、sage 回退逻辑、VAE 路径、dtype;实测 portable python 无 triton/sageattention;GPU/日志事实核对。
 - 未覆盖:GitHub 页面直读(被网络策略拦);sage3 实测安装与基准(需先装);H3 attention 占比的 profiler 数据。
 - 失败项:Perplexity pro 模式后端降级;WebFetch github.com 被拦。
+
+---
+
+## 实测解锁 SageAttention2:H3 上加速 ~68% 但硬崩 GPU(2026-08-13)
+
+按用户指示实测"拆掉 `low_precision_attention=False` 门后 sage2 能否加速 H3":
+
+**改动**:`minimax/model.py:181-182` 删除 `low_precision_attention=False`;启动加 `--use-sage-attention`(新建 `run_sage_test.bat`)。
+
+**结果(1 步 profile,torch.profiler,H3SampleProfiler)**:
+| 内核 | baseline(无 sage) | sage2 解锁 |
+|---|---|---|
+| attention | cuDNN flash ~7702ms | **sageattn `qk_int8_sv_f8_accum` 2474ms(↓68%)** |
+
+- 52 次 attention 全部走 `sageattention_qattn_sm89::qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf`(sage 的 int8 QK + fp8 V 内核),不再是 SDPA。**拆门确实解锁了 sage2。**
+
+**结果(20 步墙钟)**:**第 3 步采样时进程 `Fatal Python error: Aborted`**。崩溃栈顶在 `attention.py:592`(`attention_sage` 里 `sageattn()` 之后的输出 reshape)。`attention_sage` 的 `try/except Exception` 兜不住 native abort。随后 **CUDA 驱动被带崩**:`nvidia-smi` → `GPU is lost. Reboot the system to recover this GPU`。
+
+**结论**:sage2 在 H3 上**能加速 attention(~68%)但极不稳定**,多步生成必然硬崩 GPU(需重启系统恢复),比"质量回退"更糟——是稳定性灾难。**H3 作者用 `low_precision_attention=False` 锁死 sage 是有充分理由的**(不只是精度,而是防崩溃)。
+
+### 崩溃根因(2026-08-13 静态代码证据,置信度高)
+
+**一句话**:sageattn 2.2.0 **没有 sm120 专属模块**,在 RTX 5060 Ti 上把 H3 attention **强制塞进 sm89 编译的 fp8-V 融合内核**,该内核经 PTX 前向兼容在 sm120 上跑,多步后触发非法内存访问→原生 abort→驱动重置 GPU。
+
+证据链(全部来自 `python_embeded/Lib/site-packages/sageattention/`):
+
+1. **sm120 分发强制走 fp8-V 路径**(`core.py:171-178`):`sageattn()` 对 sm120 无条件调 `sageattn_qk_int8_pv_fp8_cuda`,`qk_quant_gran="per_warp"`,`pv_accum_dtype="fp32+fp16"`(CUDA 13≥12.8 → SageAttention2++)。注释原文:**"triton kernel is currently not usable on sm120"**——sm120 连 fp16-triton 回退都没有。
+2. **fp8_cuda 调的是 sm89 编译模块**(`core.py:767-773`):实际跑的内核 = `_qattn_sm89.qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf`(profile 里 `sageattention_qattn_sm89::...` 的 2474ms 就是它)。包内只有 `_qattn_sm80/_sm89/_sm90.pyd`,**没有 sm100/sm120 模块**。
+3. **所以 sm120 上这是"sm89 内核经 PTX JIT 前向兼容到 Blackwell 消费卡"**——作者根本没为 sm120 编译/验证这条路径(有 sm120 支持就不会没有 sm120 模块,也不会注释掉 triton 回退)。
+4. **与已知 sm120 fp8 脆弱性吻合**(本报告上部实测):cuBLAS 13 对 sm120 原生 fp8×fp8 = `CUBLAS_STATUS_NOT_SUPPORTED`,本项目自己的 fp8 也是靠 sm89 前向兼容混合 GEMM 跑的。fp8 tensor-core 在这张卡/这套软件栈上本就不是稳的。
+5. **崩溃机制**:sm89→sm120 的 JIT 融合内核在多步负载下越界写/不可恢复硬件错误(异步)→ `attention_sage` 的 `except Exception` 抓不到 → 在下一个同步点(`attention.py:592` reshape)才浮出 → torch fatal handler `Abort` → 驱动升级为 GPU reset。**"第 3 步崩"呈内存安全问题特征**(前几步能跑、跑一会儿才爆),不是确定性的形状/逻辑错误。
+
+**验证方向(未执行,需再冒险 GPU)**:用 fp16-V 变体 `sageattn_qk_int8_pv_fp16_cuda`(sm80 用的那条,**不含 fp8 V**)替代 fp8-V 跑 H3——若稳定,则铁证 fp8-V 是元凶;若同样崩,则 sm89 的 int8-QK 内核在 sm120 本身就有问题。这条 fp16-V 路径正是 KJNodes `PathchSageAttentionKJ` 的 `sageattn_qk_int8_pv_fp16_cuda` 模式(内置 `attention_sage` 选不了,只能走节点)。
+
+**后续**:sol+attn2(SolAttn 委托稠密 attention 给 sage2)未测——GPU 已崩需重启,且 sage2 单跑就崩,组合大概率同样崩。环境已还原(`git checkout` model.py + 删 `run_sage_test.bat`)。
