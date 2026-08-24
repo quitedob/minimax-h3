@@ -184,7 +184,7 @@ nvidia-smi → "GPU is lost. Reboot the system to recover this GPU"
 ## 七、当前结论(截至 2026-08-14)
 
 1. **SageAttention2 对 H3 不可用**:解锁后能加速 attention 68%,但 sm120 无专属内核、被塞进 sm89 fp8-V 内核,多步硬崩 GPU。**H3 作者的 `low_precision_attention=False` 是防崩溃的,不是精度洁癖。**
-2. **SolAttn 仍是 H3 唯一稳定的采样加速**(attention ↓55%,20步 ↓26%)。
+2. **SolAttn 仍是 H3 最快且稳定的采样加速**(attention ↓55%,20步 ↓26%);2026-08-24 完整生成 A/B 进一步确认其冷启动也比 FlashAttention2 快。
 3. **TE 换 nvfp4 是明确优化**:加载从 256s→6s、省 11GB、质量无损。与 SolAttn 叠加 = 当前最优组合。
 4. **最快出片**:热启动 nvfp4+SolAttn+EasyCache ≈ **3:15**(init 0:15 + 采样 2:43 + 解码 0:17);冷启动 10:48。详见第八节实测。
 
@@ -207,3 +207,124 @@ nvidia-smi → "GPU is lost. Reboot the system to recover this GPU"
 - **踩坑:执行缓存 ≠ 热启动**。第一次"热启动"复用 seed 42,ComfyUI 执行缓存命中 `3.24s` 返回(采样没真跑)。换 seed 43 强制重采样,才拿到真 3:15。
 - **资源占用**:满载时系统内存 ~53.8GB(触发压缩)+ VRAM 16GB 占满;跑完停服即释放。
 - 结论:最快出片 = 热启动 nvfp4+SolAttn+EasyCache ≈ **3:15**;比此前"≈7-8 分钟"估算更低——因为热启动连 decode 也从 4:11 压到 0:17(VAE 常驻)。
+
+---
+
+## 九、FlashAttention2 完整生成对照（2026-08-24）
+
+为验证 KJNodes 的 `Patch Flash Attention KJ` 是否比现有 SolAttn 更快，创建独立 portable 测试环境：Python 3.13.14、Torch 2.11.0+cu130、FlashAttention 2.9.0；模型目录通过 junction 与原环境共用，原 Torch 2.13 环境未改动。FlashAttention 已先在 RTX 5060 Ti（sm_120）上通过 bf16 CUDA 冒烟测试。
+
+**受控条件**：两次均为 H3 FL2VA FP8 + Qwen3VL 32B NVFP4 AWQ TE + EasyCache 0.3/0.2/0.9，864×480、124 帧、20 步、seed 42、冷启动并包含模型初始化、采样、双 VAE 解码和 MP4 保存。唯一主要 attention 差异为 SolAttn 与 FlashAttention2；Torch 版本分别为 2.13/cu130 和 2.11/cu130。
+
+| 阶段 | SolAttn + EasyCache | FlashAttention2 + EasyCache | Flash 相对 Sol |
+|---|---:|---:|---:|
+| 模型初始化（TE+fl2va） | 3:50 | 3:56 | +0:06（+2.6%） |
+| 采样 20 步 | 2:47 | 3:12 | **+0:25（+15.0%）** |
+| 解码、编码及其他 | 4:11 | 4:19 | +0:08（+3.2%） |
+| **冷启动总耗时** | **10:48** | **11:27** | **+0:39（+6.0%，更慢）** |
+| EasyCache 跳步 | 7/20（1.54×） | 8/20（1.67×） | Flash 甚至多跳 1 步 |
+
+- FlashAttention 路由确认：`run_flashattn_full.log:72` 输出 `Using flash attention 2: cast_dtype=torch.bfloat16`；该 KJ patch 不受 H3 的 `low_precision_attention=False` gate 限制。
+- 完整生成成功：`run_flashattn_full.log:88` 为 `Prompt executed in 00:11:27`，输出 `MiniMax_H3_nvfp4_flashattn_easycache_00001_.mp4`，没有 CUDA、DLL 或 FlashAttention 异常。
+- SolAttn 对照：`run_nvfp4_sol_easycache_cold.log:81-87`，冷初始化 3:50、采样 2:47、总耗时 10:48。
+- 纯 kernel 微基准中 FlashAttention2 相对 Torch SDPA 为 2.38×：H3 序列 15828 时 158ms vs 377ms，序列 18771 时 223ms vs 531ms；但这只说明它比**稠密 SDPA**快。SolAttn 是 H3 专用稀疏 attention，完整生成仍更快。
+- 本次比较略微有利于 FlashAttention：它的 EasyCache 跳过 8 步，而 SolAttn 只跳过 7 步；即便如此 Flash 采样仍慢 25 秒，因此方向明确。
+- Torch 2.11 与 2.13 的同形状 SDPA 基线几乎相同（约 377/531ms），没有证据表明结果是 Torch 降级导致的假性差异。不过严格归因仍受不同 Torch 版本影响，若以后出现完全匹配 Torch 2.13/cu130/cp313/sm120 的 FlashAttention wheel，应再复测。
+
+**结论**：FlashAttention2 在 H3 上确实生效且稳定完成一次 20 步生成，但它替代的是稠密 attention；相较 H3 专用 SolAttn，冷启动总耗时慢约 6%，采样段慢约 15%。当前生产配置继续使用 **NVFP4 TE + SolAttn + EasyCache**；FlashAttention 测试副本保留用于兼容性和后续 wheel 复测，不替换主环境。
+
+---
+
+## 十、FlashAttention2 + SolAttn + EasyCache 冷热启动（2026-08-24）
+
+在 Torch 2.11/cu130/FlashAttention 2.9.0 测试副本中串联：
+
+`UNET → Patch Flash Attention KJ → SolAttnPatch → EasyCache`
+
+两次均为 H3 FL2VA FP8 + Qwen3VL 32B NVFP4 AWQ TE、864×480、124 帧、20 步；冷启动 seed 42，保持同一 ComfyUI 进程后改为 seed 43 做真热启动。日志确认 `Using flash attention 2`，随后 SolAttn 检测到已有 override，并采用“SolAttn 优先、其余调用委托 FlashAttention”的组合方式（`run_flash_solattn_cold_hot.log:72-74`）。两次 EasyCache 均跳过 7/20 步（1.54×）。
+
+| 阶段 | SolAttn + EasyCache | Flash + SolAttn + EasyCache | 组合链相对 Sol |
+|---|---:|---:|---:|
+| 冷初始化 | 3:50 | 3:53 | +0:03 |
+| 冷采样 20 步 | 2:47 | 2:49 | +0:02 |
+| 冷解码、编码及其他 | 4:11 | 3:29 | −0:42 |
+| **冷启动总耗时** | **10:48** | **10:11** | **−0:37（表面快 5.7%）** |
+| 热初始化 | 0:15 | 0:15 | 持平 |
+| 热采样 20 步 | 2:43 | 2:46 | +0:03 |
+| 热解码、编码及其他 | 0:17 | 0:16 | −0:01 |
+| **热启动总耗时** | **3:14.79** | **3:16.94** | **+0:02.15（慢 1.1%）** |
+
+API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 ComfyUI 内部计时存在约 4 秒的轮询/提交开销，因此性能比较采用日志中的 `10:11` 和 `196.94s`。两次均成功输出 MP4：
+
+- `MiniMax_H3_nvfp4_flash_solattn_easycache_cold_00001_.mp4`（1.23 MB）
+- `MiniMax_H3_nvfp4_flash_solattn_easycache_hot_00001_.mp4`（1.26 MB）
+
+**解释与结论**：
+
+- 冷启动总时间看似快 37 秒，但模型初始化慢 3 秒、采样慢 2 秒；全部表面收益来自 VAE 解码/编码与收尾阶段偶然快 42 秒。Flash patch 只装在 diffusion MODEL 上，不会直接加速独立 VAE，因此不能把这 37 秒归因于 FlashAttention。
+- 热启动更能隔离 attention 差异：组合链采样慢 3 秒、总耗时慢 2.15 秒，基本可视为持平但无收益。
+- H3 主 self-attention 已被 SolAttn 优先接管，FlashAttention只处理 SolAttn 拒绝/委托的其余 attention；本次结果说明这些剩余调用对总耗时贡献很小。
+- 组合测试运行在 Torch 2.11，而旧 SolAttn 对照是 Torch 2.13，仍存在版本变量；但现有数据不支持为了组合 FlashAttention 而替换生产栈。
+
+**最终推荐不变**：生产继续使用 **NVFP4 TE + SolAttn + EasyCache**。Flash + SolAttn 组合能够稳定运行，但热启动没有提速，增加了 Torch 降级与额外二进制依赖，不值得作为默认配置。
+
+---
+
+## 十一、Flash + SolAttn 组合重测与定向优化（2026-08-24）
+
+上一节的组合数据与 SolAttn 基线分别来自 Torch 2.11 和 2.13，且冷启动结果受 VAE/文件缓存波动影响。为消除这些问题，本轮全部在同一个测试副本中完成：Python 3.13.14、Torch 2.11.0+cu130、FlashAttention 2.9.0、相同模型、分辨率、124 帧、20 步、seed 44/45，并以热采样时间作为主要指标。
+
+### 11.1 同环境基线与问题定位
+
+| 配置 | 热初始化 | 热采样 | 热总耗时 | EasyCache |
+|---|---:|---:|---:|---:|
+| SolAttn tau1.3 rows + EC0.30 | 0:15 | **2:44** | **195.49s** | 7/20 |
+| Flash + Sol tau1.3 rows + EC0.30 | 0:15 | 2:46 | 196.94s | 7/20 |
+| Flash + Sol tau1.3 exact_kv + EC0.30 | 0:16 | 2:46 | 197.61s | 7/20 |
+
+- 同环境确认：Flash + Sol 比 Sol-only 慢约 1–2 秒；不是 Torch 2.11/2.13 差异。
+- 节点顺序必须是 `UNET → Flash → SolAttn → EasyCache`。日志确认 SolAttn 优先接管 H3 长 self-attention，并把不适用路径委托 Flash。
+- `exact_kv_and_rows → exact_kv` 没有带来可重复速度收益，因此 conditioning rows 不是当前墙钟瓶颈。为了保留音频 query rows 的精确 attention，默认继续用 `exact_kv_and_rows`。
+- `allow_compile` 保持关闭：当前工作流没有模型 compile 节点，打开它本身不会启动编译。`use_tma` 也保持关闭，源码明确说明会增加 QKV 复制和峰值显存且尚未测得更快。
+
+### 11.2 参数优化结果
+
+先将 SolAttn `tau` 从 1.3 调至 1.5，再单独提高 EasyCache 阈值：
+
+| 配置 | 热采样 | 热总耗时 | 相对同环境基线 | 跳步 |
+|---|---:|---:|---:|---:|
+| Sol tau1.3 rows + EC0.30 | 2:44 | 195.49s | 基线 | 7/20 |
+| Flash + Sol tau1.5 exact_kv + EC0.30 | 2:43 | 193.96s | −1.53s（0.8%） | 7/20 |
+| Flash + Sol tau1.5 rows + EC0.30 | 2:44 | 195.15s | −0.34s（持平） | 7/20 |
+| **Flash + Sol tau1.5 rows + EC0.35** | **2:34** | **185.47s** | **−10.02s（5.1%）** | **8/20** |
+
+优化后完整参数：
+
+- FlashAttention2：KJ patch，bf16，`allow_compile=false`
+- SolAttn：`tau=1.5`、`start=0.2`、`end=0.9`、`min_tokens=4096`、`int8_qk=true`
+- 质量保护：`sink_conditioning=exact_kv_and_rows`、Morton `2d_frame`
+- EasyCache：`reuse_threshold=0.35`、`start=0.2`、`end=0.9`
+- `use_tma=false`
+
+工作流：`comfyui_download/h3_fp8_nvfp4te_flash_solattn_tau15_rows_easycache035.json`。
+
+### 11.3 冷启动解释
+
+本轮进程冷启动总耗时分布为约 9:32–10:17，但测试按顺序重复读取同一批 15–20GB 模型，Windows 文件缓存逐轮变热，因此后面的所谓“冷进程”并非严格的磁盘冷启动，不能拿 9:32 对 10:16 宣称 attention 优化节省了 44 秒。可复现的主结论只采用同一进程第二次生成：优化后热总耗时 185.47 秒，较同环境基线 195.49 秒快 10.02 秒。
+
+### 11.4 输出与质量检查
+
+优化候选冷热两次都成功完成，没有 CUDA、FlashAttention、SolAttn 或 DLL 错误。热输出：
+
+`MiniMax_H3_flash_solattn_tau15_rows_ec035_hot_00001_.mp4`
+
+媒体检查：124 帧、864×480、24 FPS、5.167 秒；H.264 视频 + AAC 32kHz 双声道音频均完整。关键帧拼图检查未见断帧、结构崩坏、主体消失或明显 EasyCache 拖影；狗的运动、草地、逆光和背景连续。
+
+但加速不是数学无损：相同 seed 下，EC0.35 对 EC0.30 的平均像素绝对差为 8.415/255、平均 PSNR 24.33dB；音频相关系数 0.886、相对 SNR 6.55dB。它们语义和结构相近，但细节轨迹与音频波形确实改变。对比拼图保存于 `comfyui_download/flash_solattn_optimization_contact_sheet.jpg`。
+
+### 11.5 最终结论
+
+- **稳定保守配置**仍是 NVFP4 TE + SolAttn tau1.3 rows + EasyCache 0.30；不需要 Flash，热耗时约 3:15。
+- **速度候选配置**是 NVFP4 TE + FlashAttention2 + SolAttn tau1.5 rows + EasyCache 0.35；本次热耗时 **3:05.47**，快约 10 秒（5.1%）。
+- 可确认的主要收益来自 EasyCache 多跳过 1 步，而不是 FlashAttention；Flash 主要作为 SolAttn dense fallback，单独贡献接近零甚至略有开销。
+- 因为当前只测试两个 seed 且数值输出有明显变化，速度候选暂不覆盖主生产工作流。建议先人工听看 seed 45 输出，再用更多 prompt/seed 做质量回归；若质量可接受，再把 EC0.35 作为快速预览档。

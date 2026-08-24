@@ -1,8 +1,8 @@
 # 研究：SageAttention2 为何在 ComfyUI（H3）里不生效，以及如何添加 attention 节点
 
-**日期**: 2026-08-13
-**研究方式**: Perplexity pro（1 主搜索 + 1 follow-up，均降级为占位回答）+ 本地 ComfyUI 源码逐行核对 + 项目文档交叉验证
-**问题**: 为什么 SageAttention2 在本机 ComfyUI 里没用上？如何在 ComfyUI 里添加 SageAttention 节点？
+**日期**: 2026-08-13（2026-08-24 更新后置节点与日志判据）
+**研究方式**: Perplexity pro（网络结果未提供可核验源码引用）+ 本地 ComfyUI/KJNodes/SolAttn 源码逐行核对 + 运行日志与 torch.profiler 交叉验证
+**问题**: 为什么 SageAttention2 在本机 ComfyUI 里没用上？后置添加 Sage Attention KJ 节点并看到 `Using sage attention` 是否代表已经生效？
 
 ---
 
@@ -41,20 +41,52 @@ H3 的 attention 显式要求高精度注意力，而这个开关是 SageAttenti
 
 **结论：即使把 `PathchSageAttentionKJ` 节点接进 H3 工作流（pysssss 工作流就是这么做的），它也会因为 `low_precision_attention=False` 静默退回 SDPA，实际不产生任何 sage 内核。** 项目实测也印证了这一点（`research-pysssss-h3-workflows.md:84` 判断"SolAttn patch 覆盖 Sage"；实测日志显示只有 SolAttn 内核在跑）。
 
+### [高] `Using sage attention mode: auto` 只证明节点完成配置，不证明 Sage 内核执行
+KJNodes 在 `get_sage_func()` 一进入时就打印该日志（`model_optimization_nodes.py:28-29`），随后才定义 `sage_func`；真正调用 `sage_func(q, k, v, ...)` 在第 89 行。节点在第 127 行克隆模型，在第 134 行把 wrapper 写入 `optimized_attention_override`。
+
+因此这条日志只能证明：
+
+1. `PathchSageAttentionKJ` 节点运行了；
+2. 选择的 Sage 模式可导入；
+3. 节点输出的那份 MODEL 当时装上了 attention override。
+
+它**不能**证明 sampler 最终使用了这份 MODEL、override 未被下游节点替换、H3 没触发 fallback，更不能证明 Sage CUDA kernel 已执行。
+
+本项目已有直接反例：`comfyui_download/run_s0102.log:72` 打印 `Using sage attention mode: auto`，第 73 行还显示 SolAttn 成功链上这个 override；但 H3 仍会把 `low_precision_attention=False` 传给 KJ wrapper，并在真正调用 Sage 前回退 SDPA。该日志中可观察到的实际运行证据是第 87/99 行的 SolAttn sparse kernel，而不是 Sage kernel。
+
+### [高] 四层证据必须分开判断
+| 层级 | 能证明什么 | 当前可靠判据 |
+|---|---|---|
+| 1. 节点执行/路由配置 | KJ 节点构造并安装了 override | `Using sage attention mode: ...`；检查最终 MODEL 的 `optimized_attention_override` |
+| 2. Sage Python 函数被走到 | wrapper 没在入口 gate 提前回退 | 在第 89 行 `sage_func(...)` 处加运行期计数/日志；当前初始化日志不能证明 |
+| 3. Sage CUDA kernel 实际执行 | GPU 确实运行 SageAttention | `torch.profiler` / Nsight 出现 `sageattention_qattn_*`、`sageattention_fused::*`，并有合理调用次数与 CUDA time |
+| 4. 稳定可用 | 多步完整生成不崩、质量可接受 | 完整采样、重复运行、质量对比；一次 profiler 命中不等于稳定 |
+
+本项目正例是临时拆除 H3 gate 后的 `profile_summary_attn2.json:31-35`：`sageattention_qattn_sm89::qk_int8_sv_f8_accum...` 共调用 52 次，才足以证明 H3 主 attention 实际执行了 Sage。反过来，该配置随后在 20 步采样第 3 步 native abort（`sage_test.log:161-166`），说明“执行过”仍不等于“稳定可用”。
+
+### [高] 后置节点位置不能绕过 H3 gate，最终 MODEL 连线与后续覆盖仍然重要
+`wrap_attn` 在运行时读取 `transformer_options["optimized_attention_override"]` 并调用当前值（`attention.py:148-160`）。因此：
+
+- Sage 节点放在 loader 后、sampler 前，只能确保它有机会 patch 模型，不能改变 H3 传入的 `low_precision_attention=False`；
+- sampler 必须连接 Sage 节点的 MODEL 输出；旁路连接原模型的分支不会获得该 clone 上的 patch；
+- 普通 `ModelPatcher.clone()` 会保留 `model_options`，但后续节点若写同一个 `optimized_attention_override` 键，可能覆盖 Sage；
+- 当前 SolAttn 是显式组合而非简单覆盖：`ComfyUI-SolAttn_triton/__init__.py:371-375` 保存已有 override，第 403-408 行安装组合 wrapper，并在 Sol 不适用时委托已有实现。但委托回 KJ Sage 后，H3 的精度 gate 仍会让它回退 SDPA。
+
 ### [高] 三条 SageAttention 接入路径（如何"添加 attention 节点"）
 | 路径 | 方式 | 是否被 `low_precision_attention=False` 拦 |
 |---|---|---|
 | 1. 内置 flag | `pip install sageattention` + 启动加 `--use-sage-attention` → 走 `attention.py` 的 `attention_sage` 分发 | **是** |
 | 2. 节点补丁 | 装 `kijai/ComfyUI-KJNodes`，用 `PathchSageAttentionKJ` 节点（`KJNodes/experimental`），patch `optimized_attention_override` | **是** |
-| 3. SageAttention3 | `sageattn3` 的 `sageattn3_blackwell`（内置 `attention3_sage`，或 KJNodes 的 `sageattn3` 模式，或 `wallen0322/ComfyUI-SageAttention3` 扩展） | **否**（只判 dtype/mask/shape，见下） |
+| 3. SageAttention3 | ComfyUI **内置** `attention3_sage`，或其他独立 Sage3 扩展 | 内置实现**不检查**该参数；但当前 KJNodes 的 `sageattn3*` 模式仍共用第 62 行 gate，**会被拦** |
 
 `PathchSageAttentionKJ` 的 sageattn 模式（`model_optimization_nodes.py:26`）：
 `disabled / auto / sageattn_qk_int8_pv_fp16_cuda / sageattn_qk_int8_pv_fp16_triton / sageattn_qk_int8_pv_fp8_cuda / sageattn_qk_int8_pv_fp8_cuda++ / sageattn3 / sageattn3_per_block_mean`。
 
-### [中] 唯一能绕过门的 Sage 路径是 SageAttention3（但以质量为赌注）
+### [中] ComfyUI 内置 SageAttention3 可绕过门，但 KJNodes 的 Sage3 模式不行
 - 内置 `attention3_sage`（`attention.py:603-615`）的回退条件只有：非 CUDA、dtype 非 fp16/bf16、有 mask、形状不匹配 —— **不检查 `low_precision_attention`**。
 - 因此 H3（bf16、head_dim 128）理论上会被 `sageattn3_blackwell` 命中。
-- 但这**无视了 H3 显式要求的高精度注意力**，输出质量有回退风险（可能重踩"乱码/质量劣化"的坑）。
+- 但 KJNodes 的 `sageattn3` / `sageattn3_per_block_mean` 只是更换第 50-55 行的底层 `sage_func`，外层仍统一经过第 60-63 行 `attention_sage` gate；对当前 H3 仍会回退 SDPA。旧版报告把 KJ Sage3 与 ComfyUI 内置 `attention3_sage` 等同，现已更正。
+- 内置 Sage3 仍**无视了 H3 显式要求的高精度注意力**，输出质量有回退风险（可能重踩"乱码/质量劣化"的坑）。
 - 本机 5060 Ti（sm_120/Blackwell）跑 sageattn2 已实测 sm_120 兼容（max diff 0.006），但 sageattn3 的 cu130/sm_120 Windows wheel 是否可装、装后质量如何，尚未实测。
 
 ### [中] 项目现状：sage 装了但没用，SolAttn 才是真正生效的
@@ -92,7 +124,7 @@ H3 的 attention 显式要求高精度注意力，而这个开关是 SageAttenti
 
 ## 矛盾与缺口
 
-- **Perplexity MCP 本次降级为占位回答**（1 主搜索 + 1 follow-up 均返回"无实时访问、请确认"的提纲式内容，无实质 URL、无代码级细节）。这与项目既往经验一致（`research-pysssss-h3-workflows.md:82`）。本次结论全部改由**本地源码逐行核对**得出，代码级证据可靠；网络侧的新版本/新 wheel 信息未获得。
+- **Perplexity MCP 本次仍未返回可核验的源码 URL/行号**，只能提供一般性判断。本次结论全部由**本地源码、运行日志与 profiler 结果**交叉验证；网络侧上游最新提交是否改变行为仍需按具体版本复核。
 - **SageAttention3 质量风险未实测**：`low_precision_attention=False` 是 H3 移植者的显式选择，但未在 H3 上对比过 sage3 vs SDPA 的生成质量。
 - **sageattn3 的 cu130/sm_120 Windows wheel 是否可装、性能如何**未验证。
 
@@ -125,7 +157,7 @@ H3 的 attention 显式要求高精度注意力，而这个开关是 SageAttenti
 ## 建议（可操作下一步）
 
 1. **默认别动 SageAttention2**：门是能拆，但拆了等于无视 H3 作者的高精度要求，收益要拿质量去赌。若非要试，按上节"解锁做法"做，并逐帧对比质量。
-2. **想试 SageAttention3**：走 KJNodes 的 `sageattn3` / `sageattn3_per_block_mean` 模式，或装 `wallen0322/ComfyUI-SageAttention3` 扩展；但先备份 `python_embeded`，装完对比生成帧质量（别只看速度），并确认 sm_120/cu130 wheel 可用。
+2. **想试 SageAttention3**：不要把当前 KJNodes 的 `sageattn3*` 模式当成绕门方案；应核对并使用 ComfyUI 内置 `attention3_sage` 路径或独立 Sage3 扩展。先备份 `python_embeded`，装完用 profiler 确认 kernel，再对比生成帧质量，并确认 sm_120/cu130 wheel 可用。
 3. **本机真正有效的 attention 加速是 SolAttn**（`kijai/ComfyUI-SolAttn_triton`），已实测 attention ↓55%、20 步 ↓26%。继续用 SolAttn 即可，不必在 Sage 上纠结。
 4. 若要判断 attention 是否仍是主瓶颈，先跑 `torch.profiler` / `nvidia-smi` 量化占比，再决定是否上 sage3。
 
@@ -134,5 +166,5 @@ H3 的 attention 显式要求高精度注意力，而这个开关是 SageAttenti
 ## 搜索覆盖
 
 - **本地（权威）**：`comfy/ldm/modules/attention.py` 的 sage 分发与 flag 处理；`comfy/ldm/minimax/model.py` 的 `low_precision_attention=False` 调用点；`example/ComfyUI-KJNodes` 的 `PathchSageAttentionKJ` 节点定义与补丁机制；项目三份 docs 交叉验证。
-- **Perplexity**：1 次主搜索（pro，5 项清单）+ 1 次 follow-up（强制要代码级细节）—— 均降级为占位回答，未获得网络侧增量。
+- **Perplexity**：2026-08-24 再次以 pro 模式检索节点日志、fallback、override 与 profiler 判据，仍未返回可核验源码引用，因此不作为关键结论依据。
 - **未覆盖**：sageattn3 Windows/cu130/sm_120 实测安装与基准；GitHub 页面直读（本网络被策略拦）；H3 attention 占比的 profiler 数据（沿用历史结论）。

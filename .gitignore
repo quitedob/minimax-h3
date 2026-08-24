@@ -5,6 +5,9 @@
 /ComfyUI_windows_portable/ComfyUI/output/
 /ComfyUI_windows_portable/python_embeded/
 
+# ComfyUI 便携版测试副本（本地 Torch/FlashAttention A/B 环境，不入库）
+/ComfyUI_windows_portable_torch211_flash_test/
+
 # 下载工具与 CPython 源码树（工具，非本项目脚本）
 comfyui_download/aria2/
 comfyui_download/cpython-3.13.14/
@@ -17,6 +20,10 @@ comfyui_download/cpython-3.13.14/
 *.bin
 *.onnx
 *.gguf
+
+# FLUX.2 模型软连目录（junction 指向 F:\python\flux\models，不入库）
+/ComfyUI_windows_portable/ComfyUI/models/diffusion_models/flux-2-klein-base-4b/
+/ComfyUI_windows_portable/ComfyUI/models/text_encoders/Qwen3-4B-FP8/
 
 # 本地配置
 .claude/settings.local.json
