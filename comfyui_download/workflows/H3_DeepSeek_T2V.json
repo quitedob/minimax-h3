@@ -96,18 +96,6 @@
       "mode": 0,
       "inputs": [
         {
-          "name": "first_frame",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "last_frame",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
           "name": "prompt",
           "type": "STRING",
           "widget": {
@@ -306,7 +294,7 @@
       "widgets_values": [
         "",
         "T2VA",
-        "deepseek-chat",
+        "deepseek-v4-flash",
         0.7
       ]
     }
@@ -325,7 +313,7 @@
       115,
       0,
       105,
-      3,
+      1,
       "INT"
     ],
     [
@@ -333,7 +321,7 @@
       115,
       1,
       105,
-      4,
+      2,
       "INT"
     ],
     [
@@ -341,7 +329,7 @@
       119,
       0,
       105,
-      2,
+      0,
       "STRING"
     ]
   ],
@@ -379,30 +367,6 @@
           ]
         },
         "inputs": [
-          {
-            "id": "d6eaa195-2266-4016-b7ed-b2d17a3e53c2",
-            "name": "first_frame",
-            "type": "IMAGE",
-            "linkIds": [
-              195
-            ],
-            "pos": [
-              -2456,
-              4744
-            ]
-          },
-          {
-            "id": "03b95567-f496-4279-9d38-989dd34fa882",
-            "name": "last_frame",
-            "type": "IMAGE",
-            "linkIds": [
-              196
-            ],
-            "pos": [
-              -2456,
-              4764
-            ]
-          },
           {
             "id": "d7302ca7-24ed-44c4-8ac9-736540dab7fb",
             "name": "prompt",
@@ -1128,14 +1092,14 @@
                 "name": "first_frame",
                 "shape": 7,
                 "type": "IMAGE",
-                "link": 195
+                "link": null
               },
               {
                 "localized_name": "last_frame",
                 "name": "last_frame",
                 "shape": 7,
                 "type": "IMAGE",
-                "link": 196
+                "link": null
               },
               {
                 "localized_name": "prompt",
@@ -1480,25 +1444,9 @@
             "type": "VIDEO"
           },
           {
-            "id": 195,
-            "origin_id": -10,
-            "origin_slot": 0,
-            "target_id": 104,
-            "target_slot": 2,
-            "type": "IMAGE"
-          },
-          {
-            "id": 196,
-            "origin_id": -10,
-            "origin_slot": 1,
-            "target_id": 104,
-            "target_slot": 3,
-            "type": "IMAGE"
-          },
-          {
             "id": 197,
             "origin_id": -10,
-            "origin_slot": 2,
+            "origin_slot": 0,
             "target_id": 104,
             "target_slot": 4,
             "type": "STRING"
@@ -1514,7 +1462,7 @@
           {
             "id": 200,
             "origin_id": -10,
-            "origin_slot": 3,
+            "origin_slot": 1,
             "target_id": 104,
             "target_slot": 5,
             "type": "INT"
@@ -1522,7 +1470,7 @@
           {
             "id": 201,
             "origin_id": -10,
-            "origin_slot": 4,
+            "origin_slot": 2,
             "target_id": 104,
             "target_slot": 6,
             "type": "INT"
@@ -1538,7 +1486,7 @@
           {
             "id": 206,
             "origin_id": -10,
-            "origin_slot": 5,
+            "origin_slot": 3,
             "target_id": 111,
             "target_slot": 0,
             "type": "FLOAT"
@@ -1546,7 +1494,7 @@
           {
             "id": 207,
             "origin_id": -10,
-            "origin_slot": 6,
+            "origin_slot": 4,
             "target_id": 15,
             "target_slot": 0,
             "type": "INT"
@@ -1554,7 +1502,7 @@
           {
             "id": 221,
             "origin_id": -10,
-            "origin_slot": 7,
+            "origin_slot": 5,
             "target_id": 6,
             "target_slot": 0,
             "type": "COMBO"
@@ -1562,7 +1510,7 @@
           {
             "id": 223,
             "origin_id": -10,
-            "origin_slot": 9,
+            "origin_slot": 7,
             "target_id": 11,
             "target_slot": 0,
             "type": "COMBO"
@@ -1570,7 +1518,7 @@
           {
             "id": 224,
             "origin_id": -10,
-            "origin_slot": 10,
+            "origin_slot": 8,
             "target_id": 24,
             "target_slot": 0,
             "type": "COMBO"
@@ -1594,7 +1542,7 @@
           {
             "id": 227,
             "origin_id": -10,
-            "origin_slot": 8,
+            "origin_slot": 6,
             "target_id": 13,
             "target_slot": 0,
             "type": "COMBO"

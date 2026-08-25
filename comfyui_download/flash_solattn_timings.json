@@ -1,0 +1,110 @@
+[
+  {
+    "label": "cold",
+    "seed": 42,
+    "prompt_id": "db32a675-82a6-4a6b-ad26-99212843e28f",
+    "elapsed_seconds": 615.57,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "db32a675-82a6-4a6b-ad26-99212843e28f",
+            "timestamp": 1787540434177
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "db32a675-82a6-4a6b-ad26-99212843e28f",
+            "timestamp": 1787540434179
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "db32a675-82a6-4a6b-ad26-99212843e28f",
+            "timestamp": 1787541046034
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_nvfp4_flash_solattn_easycache_cold_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  },
+  {
+    "label": "hot",
+    "seed": 43,
+    "prompt_id": "8246241e-76c7-4a06-bd09-515b9ec93ff2",
+    "elapsed_seconds": 200.28,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "8246241e-76c7-4a06-bd09-515b9ec93ff2",
+            "timestamp": 1787541049737
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "unet",
+              "clip",
+              "vae_video",
+              "vae_audio",
+              "cond",
+              "solattn",
+              "easycache",
+              "guider",
+              "sampler_select",
+              "sigmas",
+              "flashattn"
+            ],
+            "prompt_id": "8246241e-76c7-4a06-bd09-515b9ec93ff2",
+            "timestamp": 1787541049738
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "8246241e-76c7-4a06-bd09-515b9ec93ff2",
+            "timestamp": 1787541246676
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_nvfp4_flash_solattn_easycache_hot_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  }
+]

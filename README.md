@@ -18,7 +18,7 @@ MiniMax-H3 视频生成工作区：ComfyUI 便携版、H3 工作流、SolAttn �
 
 ```dotenv
 DEEPSEEK_API_KEY=你的_deepseek_api_key
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 

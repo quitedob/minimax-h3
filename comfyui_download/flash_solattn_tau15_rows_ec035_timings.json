@@ -1,0 +1,110 @@
+[
+  {
+    "label": "cold",
+    "seed": 44,
+    "prompt_id": "4ef7db84-58eb-4fbf-a4fd-1d30065fafdb",
+    "elapsed_seconds": 590.92,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "4ef7db84-58eb-4fbf-a4fd-1d30065fafdb",
+            "timestamp": 1787546082718
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "4ef7db84-58eb-4fbf-a4fd-1d30065fafdb",
+            "timestamp": 1787546082720
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "4ef7db84-58eb-4fbf-a4fd-1d30065fafdb",
+            "timestamp": 1787546672083
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_flash_solattn_tau15_rows_ec035_cold_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  },
+  {
+    "label": "hot",
+    "seed": 45,
+    "prompt_id": "79bfd6c5-0a83-4fb2-bab9-91b04fb64a2e",
+    "elapsed_seconds": 190.3,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "79bfd6c5-0a83-4fb2-bab9-91b04fb64a2e",
+            "timestamp": 1787546673639
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "unet",
+              "clip",
+              "vae_video",
+              "vae_audio",
+              "cond",
+              "solattn",
+              "easycache",
+              "guider",
+              "sampler_select",
+              "sigmas",
+              "flashattn"
+            ],
+            "prompt_id": "79bfd6c5-0a83-4fb2-bab9-91b04fb64a2e",
+            "timestamp": 1787546673640
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "79bfd6c5-0a83-4fb2-bab9-91b04fb64a2e",
+            "timestamp": 1787546859108
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_flash_solattn_tau15_rows_ec035_hot_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  }
+]

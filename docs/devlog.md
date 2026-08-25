@@ -328,3 +328,83 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - **速度候选配置**是 NVFP4 TE + FlashAttention2 + SolAttn tau1.5 rows + EasyCache 0.35；本次热耗时 **3:05.47**，快约 10 秒（5.1%）。
 - 可确认的主要收益来自 EasyCache 多跳过 1 步，而不是 FlashAttention；Flash 主要作为 SolAttn dense fallback，单独贡献接近零甚至略有开销。
 - 因为当前只测试两个 seed 且数值输出有明显变化，速度候选暂不覆盖主生产工作流。建议先人工听看 seed 45 输出，再用更多 prompt/seed 做质量回归；若质量可接受，再把 EC0.35 作为快速预览档。
+
+---
+
+## 十二、把本机 ComfyUI 转发到云端公网（2026-08-24）
+
+目标：把云端服务器 `106.55.30.150` 的 80 端口从 New API 切到**本机 ComfyUI（生产环境）**，并用 HTTPS + Basic Auth 保护。
+
+### 12.1 总体链路
+
+```
+公网 → 106.55.30.150:552 (Caddy, HTTPS video.geekq.xyz, Basic Auth)
+        ↓ reverse_proxy
+云端 127.0.0.1:8188 (sshd 反向映射端口)
+        ↓ SSH -R 反向隧道
+本机 127.0.0.1:8188 (ComfyUI 0.30.0, Torch 2.13)
+```
+
+### 12.2 SSH 反向隧道与自启动
+
+- 脚本：`F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat`
+  - 本机 8188 未监听则先启 ComfyUI，再进入 `-R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150` 的 watchdog 循环。
+- 登录自启动任务：`ComfyUI Cloud Tunnel`。
+- 运行态确认：`cmd(26504)` 看门狗 + `ssh(21204)` 隧道进程 + 计划任务 `Ready`。
+
+### 12.3 云端 Caddy 切换（80 → ComfyUI）
+
+- 原配置：`:80 → 127.0.0.1:3000 (New API)`。
+- 切换后：`video.geekq.xyz:552 → 127.0.0.1:8188` + `basic_auth`（用户名 `comfyui`）。
+- 备份：`/etc/caddy/Caddyfile.before-comfyui`、`Caddyfile.comfyui-http-basic`、`Caddyfile.before-https-552`。
+- `new-api.service` 已 `stop && disable`（inactive/disabled）。
+- 认证凭据（随机密码）：`F:\python\llamacpp\deploy-cloud\comfyui-cloud-auth.txt`。
+- 一键回滚 New API：`F:\python\llamacpp\deploy-cloud\restore-newapi-cloud.bat`。
+
+### 12.4 证书（video.geekq.xyz）
+
+- 来源：`F:\python\h3\models\video.geekq.xyz_other\video.geekq.xyz_other\`（`_bundle.crt`/`.pem`/`.key`/`.csr`）。
+- 校验：`CN=video.geekq.xyz`、`SAN=DNS:video.geekq.xyz`、`issuer=TrustAsia DV TLS RSA CA 2024`、有效期 `2026-08-24 → 2026-11-22`、证书与私钥 sha256 一致。
+- 上传至 `/etc/caddy/certs/`（`chown root:caddy` + `chmod 640`），Caddy 手动 `tls` 配置。
+- **443 被腾讯云安全组拦截**：云主机 `tcpdump` 收不到任何外部 443 SYN；证书在云主机本地 TLS 验证却是 OK（TLS1.3 verify=0）。Caddy/证书/Linux 防火墙均无误。
+- 尝试 `sslip.io`/`nip.io` 免费自动 HTTPS 失败（腾讯云 DNSPod 拦截 + 本机 DNS 污染 `198.18.x`）。因此**改用 552 端口**。
+
+### 12.5 端口 552
+
+- Caddy 监听 `*:552`，已关闭 443。
+- 验证：`openssl s_client` TLS1.3 `Verify return code: 0`；认证 API `200`；WSS `101 Switching Protocols`。
+- 本机浏览器打不开的根因是代理 Fake-IP（非云端）：Vortex 把 `video.geekq.xyz` 解析成 `198.18.0.143`。
+
+### 12.6 本地代理 Fake-IP 处理（Vortex / Bitz Net）
+
+- 配置文件：`C:\Users\SHUAIBI\.config\com.vortex.helper\config.yaml`（改动前备份 `.before-video-geekq`）。
+- 新增三处：
+  - `hosts:  video.geekq.xyz: 106.55.30.150`
+  - `dns.fake-ip-filter: - video.geekq.xyz`
+  - `rules: - DOMAIN,video.geekq.xyz,DIRECT`
+- 用 **Python UTF-8** 精确改回 YAML（此前 PowerShell 把中文节点名写成乱码导致校验失败），`com.vortex.helper.exe -t` 校验通过。
+- 通过本地控制端口 `127.0.0.1:39798` `PUT /configs?force=true` 热重载，返回 `204`。
+- 因 TUN/`use-hosts true` 生效，Chrome 旧进程仍缓存 Fake-IP，需**完全退出重开浏览器**。
+
+### 12.7 DNS（video.geekq.xyz 解析问题）
+
+- 初始 `video.geekq.xyz` 为 **NXDOMAIN**，原因：子域悬挂委派。
+- 权威记录：
+  - `geekq.xyz` NS = `flowers/humid.dnspod.net`（父域，正常）
+  - `video.geekq.xyz` NS = `f1g1ns1/f1g1ns2.dnspod.net`（子域委派）
+- 关键判据：向 `f1g1ns1` 查 `video A` 返回的是**父区 SOA（humid.dnspod.net）**，而非子区自己的 SOA → 该 NS 实际未托管此子区，属 dead delegation。
+- 结论（DNSPod 面板操作）：在 `geekq.xyz` 区删除 `video` 的 2 条 NS 委派，再加 `video A → 106.55.30.150`；**顶层 `geekq.xyz` 的 NS（flowers/humid）绝不能动**，否则整站不解析。
+
+### 12.8 502 排障（最新）
+
+- 症状：DNS 生效后 `https://video.geekq.xyz:552/` 返回 **502**。
+- 根因：本机 ComfyUI（8188）进程消失；SSH 隧道虽在，但 Caddy→本机 8188 时 `connection reset by peer`（Caddy 日志反复出现）。
+- 诊断链：云端 552 监听 OK → 云端 loopback 8188（sshd）OK → 本机 8188 无监听 → 隧道映射到死端口即 RST。
+- 处理：重启生产 ComfyUI（`Start-Process python main.py --port 8188`），等 8188 就绪后隧道自动回通。
+
+### 12.9 残留与要点
+
+- 云端唯一缺口：`video.geekq.xyz` 的 A 记录（删子域 2 条 NS 委派 + 加 `A → 106.55.30.150`）。
+- 本机 ComfyUI 必须常驻；watchdog 只在 8188 已监听时才进入 SSH 循环，ComfyUI 若挂掉需保证能自启。
+- 安全：HTTP/HTTPS + Basic Auth；密码在本地 `comfyui-cloud-auth.txt`，勿入 git。
+- 回滚入口：`restore-newapi-cloud.bat`（恢复 `Caddyfile.before-comfyui` + 启用 `new-api.service`）。

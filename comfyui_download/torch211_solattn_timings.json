@@ -1,0 +1,109 @@
+[
+  {
+    "label": "cold",
+    "seed": 44,
+    "prompt_id": "9196da23-b4c6-4f99-b545-1778cd947b17",
+    "elapsed_seconds": 620.59,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "9196da23-b4c6-4f99-b545-1778cd947b17",
+            "timestamp": 1787542322884
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "9196da23-b4c6-4f99-b545-1778cd947b17",
+            "timestamp": 1787542322886
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "9196da23-b4c6-4f99-b545-1778cd947b17",
+            "timestamp": 1787542939573
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_torch211_solattn_cold_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  },
+  {
+    "label": "hot",
+    "seed": 45,
+    "prompt_id": "8167df2b-51ae-4b48-bb30-0e9d492fba82",
+    "elapsed_seconds": 200.38,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "8167df2b-51ae-4b48-bb30-0e9d492fba82",
+            "timestamp": 1787542943482
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "unet",
+              "clip",
+              "vae_video",
+              "vae_audio",
+              "cond",
+              "solattn",
+              "easycache",
+              "guider",
+              "sampler_select",
+              "sigmas"
+            ],
+            "prompt_id": "8167df2b-51ae-4b48-bb30-0e9d492fba82",
+            "timestamp": 1787542943484
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "8167df2b-51ae-4b48-bb30-0e9d492fba82",
+            "timestamp": 1787543138974
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "save": {
+        "images": [
+          {
+            "filename": "MiniMax_H3_torch211_solattn_hot_00001_.mp4",
+            "subfolder": "video",
+            "type": "output"
+          }
+        ],
+        "animated": [
+          true
+        ]
+      }
+    }
+  }
+]

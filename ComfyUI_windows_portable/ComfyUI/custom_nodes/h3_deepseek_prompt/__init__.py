@@ -11,7 +11,7 @@ PROJECT_ROOT = NODE_ROOT.parents[3]
 ENV_PATH = PROJECT_ROOT / ".env"
 SKILL_PATH = PROJECT_ROOT / ".claude" / "skills" / "h3-prompt-writing"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 def _load_env(path):
