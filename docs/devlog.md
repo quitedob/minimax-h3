@@ -732,4 +732,13 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 
 **遗留（可选，供未来上游跟进，非生产必需）**：`comfyui_download/sage3_repro.py`（per_block_mean True/False 独立 repro，未跑）；CUTLASS 未钉版本；`models/SageAttention-for-windows/` 源码与 PR #323 改动、`models/rebuild_sage3_golden_backup_231836/` 备份、venv 已回退 golden `.pyd`（SHA `f9ad8bea`/`e9056d6a`）。
 
+### 16.13 生产稳定栈 10s 长任务验证成功（2026-08-26）
+
+定案后按生产栈（**COMFY_SAGE3=0 / SolAttn + EasyCache + SDPA fallback，无 Sage3**）在 8188 重渲"蜘蛛侠 vs 变形金刚·连贯打斗·10s"（`h3_spiderman_tf_giant_10s_prompt.json`，864×480 / length=240 → 243 帧）：
+
+- **成功** `Prompt executed in 00:15:57`，`history: DONE`，输出 `Cloud_H3_Sage3_SolAttn_EasyCache_00002_.mp4`（3.7MB）。
+- 媒体验证：H.264 / 864×480 / 24fps / AAC 32kHz 双声道 / **10.125s**；帧 std 49.5/57.4/43.1（非静帧）。EasyCache 跳 5/20（1.33×，与 Sage3 版一致）。
+- 日志确认 `Using pytorch attention`（Sage3 计数 0）→ **确为稳定栈，无 Sage3**。（文件名里的 "Sage3" 是云端工作流模板继承的节点标题，非本次实际后端。）
+- **结论：SolAttn + EasyCache(SDPA) 在本机 10s / 240 帧长任务上可靠出片，无崩溃。** 这是生产可用的长片路径；Sage3 仅短任务且需接受 GPU reset。
+
 
