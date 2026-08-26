@@ -11,6 +11,9 @@
 # ComfyUI 便携版测试副本（本地 Torch/FlashAttention A/B 环境，不入库）
 /ComfyUI_windows_portable_torch211_flash_test/
 
+# SageAttention3 Python 3.12 / Torch 2.10 隔离测试环境（不入库）
+/ComfyUI_sage3_py312/
+
 # 下载工具与 CPython 源码树（工具，非本项目脚本）
 comfyui_download/aria2/
 comfyui_download/cpython-3.13.14/

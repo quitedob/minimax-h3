@@ -1,0 +1,195 @@
+{
+  "prompt": {
+    "unet": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "clip": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "type": "minimax",
+        "device": "default"
+      }
+    },
+    "vae_video": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+      }
+    },
+    "vae_audio": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+      }
+    },
+    "cond": {
+      "class_type": "MiniMaxH3ImageToVideo",
+      "inputs": {
+        "clip": [
+          "clip",
+          0
+        ],
+        "vae": [
+          "vae_video",
+          0
+        ],
+        "prompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, a medium-wide shot frames a quiet city street corner at midday as Spider-Man crouches on a curb-side hydrant and a silver, human-sized Autobot soldier steps out of a parked delivery van into a fighting stance. The camera tracks right with small amplitude as the robot throws a straight punch; Spider-Man vaults over the fist and snaps a web line to the hydrant standpipe, releasing a jet of pressurized water into the air. The camera shakes strongly as the robot fist crushes the hydrant, water spraying across the fender of a parked sedan, and Spider-Man swings around on the web to drive a kick into the robot chest. The camera arcs left as the robot staggers, tears a streetlamp from the pavement, and swings it in a wide arc; Spider-Man cartwheels beneath it and shoots a web at the bumper of a passing delivery van, yanking the van into the robot legs. The robot crashes face-first into a corner newsstand, bursting newspapers across the road, and its shoulder caves in the hood of the parked sedan as dust and loose paper swirl. The camera pulls out with small amplitude as both combatants circle into a standoff, Spider-Man breathing hard over the broken hydrant and the robot rising from the ruined newsstand beside the crushed sedan, the frame holding on them as a ringing calm settles over the street.\n\noverall_soundscape: Pressurized water hisses and fans from the ruptured hydrant as metal collides with glass and concrete. Papers flutter and scatter across the pavement while the delivery van brakes squeal, ending with heavy breathing and the drip of water.\n\nnon_diegetic_music: Tight orchestral percussion at a driving tempo with brass accents and string stabs, building to a single sustained hit on the final impact, then a low resolved tone as the standoff settles.",
+        "width": 864,
+        "height": 480,
+        "length": 240
+      }
+    },
+    "solattn": {
+      "class_type": "SolAttnPatch",
+      "inputs": {
+        "model": [
+          "unet",
+          0
+        ],
+        "tau": 1.3,
+        "start_percent": 0.2,
+        "end_percent": 0.9,
+        "min_tokens": 4096,
+        "int8_qk": true,
+        "sink_conditioning": "exact_kv_and_rows",
+        "morton": true,
+        "morton_curve": "2d_frame",
+        "verbose": false,
+        "use_tma": false
+      }
+    },
+    "easycache": {
+      "class_type": "EasyCache",
+      "inputs": {
+        "model": [
+          "solattn",
+          0
+        ],
+        "reuse_threshold": 0.3,
+        "start_percent": 0.2,
+        "end_percent": 0.9,
+        "verbose": false
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 20260825
+      }
+    },
+    "guider": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": [
+          "easycache",
+          0
+        ],
+        "conditioning": [
+          "cond",
+          0
+        ]
+      }
+    },
+    "sampler_select": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "res_multistep"
+      }
+    },
+    "sigmas": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": [
+          "unet",
+          0
+        ],
+        "scheduler": "simple",
+        "steps": 20,
+        "denoise": 1.0
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guider",
+          0
+        ],
+        "sampler": [
+          "sampler_select",
+          0
+        ],
+        "sigmas": [
+          "sigmas",
+          0
+        ],
+        "latent_image": [
+          "cond",
+          1
+        ]
+      }
+    },
+    "save": {
+      "class_type": "SaveVideo",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ],
+        "filename_prefix": "video/Cloud_H3_Sage3_SolAttn_EasyCache",
+        "format": "auto",
+        "codec": "auto"
+      }
+    },
+    "decode_video": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": [
+          "vae_video",
+          0
+        ]
+      }
+    },
+    "decode_audio": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": [
+          "vae_audio",
+          0
+        ]
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "decode_video",
+          0
+        ],
+        "fps": 24,
+        "audio": [
+          "decode_audio",
+          0
+        ]
+      }
+    }
+  },
+  "client_id": "h3-coherent-10s"
+}
