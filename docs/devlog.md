@@ -743,6 +743,74 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 
 ---
 
+## 十七、Cloud Web 排队页 `h3_web_queue` 与公网路径重构（2026-09-07）
+
+本会话在 `ComfyUI_sage3_py312`（生产 8188）新增一个**单输入视频排队页**,并打通公网;纯前端 + 自定义节点,与 Sage3/SolAttn 无耦合。
+
+### 17.1 前端页面（/video）
+- 单输入框(视频灵感)+「生成视频」;DeepSeek 改写默认开(可按 `user_text` 直入)。
+- 提交走 `POST /prompt` → 轮询 `/history/{pid}` → 出片预览 + 下载。
+- 全局任务列表:运行/排队(来自 `/queue`)+「视频(磁盘)」(来自 `/h3/files`)。
+- 高级设置:步数 ≥10(默认20)、时长 5-8s(默认5s)、分辨率 480p/720p、DeepSeek 模式。
+- 手机自适应 CSS(`@media max-width 640px`)。
+
+### 17.2 公网路径重构（云端 Caddy + SSH 隧道）
+- `/` → 302 → `/video`(公开);`/comfyui` → 原 ComfyUI 编辑器(**Basic Auth**);其余 `/object_info /prompt /history /view /ws /assets/*` 公开。
+- 云端备份 `/etc/caddy/Caddyfile.bak-20260903164718`、`Caddyfile.bak-auth-20260903171550`。
+- **关键**:ComfyUI `/history` 是**内存态、重启即清空** → 完成的视频列表改扫磁盘 `/h3/files`,不再依赖 history。
+
+### 17.3 下载修复（手机 Safari 痛点）
+- ComfyUI `/view` 返回裸 `filename="..."`(视为 inline)→ Safari **播放而非保存**。
+- 新增 `/h3/download?...` → **`Content-Disposition: attachment`**,所有浏览器(含 iOS Safari)强制保存。
+- 页面「下载」走 `/h3/download`,「预览」走 `/view`(播放)。
+
+### 17.4 从 mp4 元数据恢复 prompt/参数（绕过 history 清空）
+- SaveVideo 把提交图写进 mp4 的 `udta/meta` → `prompt`(JSON)。`/h3/files` 用 **pyav(`import av`,venv 18.1.0)读 `container.metadata['prompt']`** 恢复每个视频的 prompt/steps/sec/res,并只列本页生成的 `web_*.mp4`(剔除 `MiniMax_H3_*` 基准)。
+- `/h3/meta`(POST)存 `{filename:{prompt,steps,sec,res,dur}}` 到 `output/webmeta.json`;`dur`(生成耗时)仅对**页面观察过的新任务**有;旧文件只显示「制作于<时间>」——生成耗时未写进文件,history 又重启即清,无法回补。
+
+### 17.5 意外:SSH 隧道掉线 → 502 恢复
+- 现象:外网 `https://video.geekq.xyz:552` 全部 **502 Bad Gateway**。
+- 根因:SSH 反向隧道进程为 0(本地 ComfyUI 正常,但 Caddy 反代经隧道到本地;隧道没了→RST/502)。
+- 处理:重建 `-R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150` → 恢复 200。
+- 持久化:登录计划任务 `ComfyUI Cloud Tunnel` 确认跑 `start-comfyui-cloud.bat`(登录时启 ComfyUI+隧道循环);但它是**一次性登录任务**,运行中再掉线不自动拉,需重登或手动。
+
+### 17.6 技术判读留档
+- 客户端浏览器解析 mp4 元数据不可靠(拉整文件超时)→ 用服务端 pyav 读取。
+- 生成耗时(用时)对旧文件不可回补:ComfyUI 只把 prompt 图写入 mp4,不写 start/end 时间;history 又一重启即清。
+
+### 17.7 文件
+- 自定义节点 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/{__init__.py,web/index.html}`(gitignored,ComfyUI 实例不入库);入库副本 `comfyui_download/h3_web_queue/`。
+- 生产启动脚本 `ComfyUI_sage3_py312/start_web_server.ps1`(入库 `comfyui_download/start_web_server.ps1`)。
+- 云端 `/etc/caddy/Caddyfile` + 备份若干;入库参考 `comfyui_download/deploy-cloud/Caddyfile.video.comfyui`。记忆 `public-url-map-video-comfyui.md`。
+
+### 17.8 部署说明(重建 ComfyUI 时照做)
+
+**安装自定义节点**
+1. 把 `comfyui_download/h3_web_queue/` 整个目录复制到 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/`(`__init__.py` + `web/index.html`)。
+2. 工作流模板:确认 `ComfyUI_sage3_py312/cloud_h3_sage3_solattn_easycache_prompt.json` 存在(节点会按此拼接图;若无,回退到 `comfyui_download/cloud_h3_sage3_solattn_easycache_prompt.json`)。
+
+**前置依赖**
+- `av`(pyav):`/h3/files` 用它从 mp4 元数据恢复 prompt/参数。`ComfyUI_sage3_py312/venv` 已含 18.1.0;若缺失 `venv\Scripts\pip install av`。无 `av` 时 `/h3/files` 仍能列文件,只是 meta(prompt/res/sec)为空。
+
+**启动(生产稳定栈)**
+- 用 `ComfyUI_sage3_py312/start_web_server.ps1`(内部设 `COMFY_SAGE3=0`,SolAttn+EasyCache+SDPA fallback,无 Sage3)→ 启动 `venv\Scripts\python.exe main.py --extra-model-paths-config extra_model_paths.yaml --disable-auto-launch --listen 127.0.0.1 --port 8188`。
+- 或用云端 launcher `F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat`(起 ComfyUI + SSH 隧道 watchdog;登录计划任务 `ComfyUI Cloud Tunnel` 调用它)。
+
+**端点(路由注册于启动时,改动需重启)**
+- `GET /video`、`GET /h3` → 单输入页(每次请求重读 `web/index.html`,故**前端改动实时生效、无需重启**)。
+- `GET /h3/download?filename=..&subfolder=..&type=..` → `Content-Disposition: attachment` 强制下载(手机 Safari 识别)。
+- `GET /h3/files` → 只列 `web_*.mp4`,用 pyav 读 mp4 元数据合并 meta(prompt/参数/时长)。缓存于 `_AV_META_CACHE`(按 mtime)。
+- `POST /h3/meta` → 存 `{filename:{prompt,steps,sec,res,dur}}` 到 `output/webmeta.json`(生成耗时)。
+
+**云端 Caddy(公网路由)**
+- `/` 302→`/video`(公开);`/comfyui` Basic Auth(编辑器);其余 API/`/h3/*` 公开。仅含 bcrypt 哈希,明文密码在 `F:\python\llamacpp\deploy-cloud\comfyui-cloud-auth.txt`(勿入 git)。
+
+**验证**
+- `curl http://127.0.0.1:8188/video` → 200;`/h3/download?...` 头含 `attachment`;`/h3/files` 返回 `web_*.mp4` 且带 meta。
+- 隧道:确认 `ssh.exe` 进程存在(`-R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150`);否则外网 502。
+
+---
+
 ## 十八、FlashAttention/SageAttention 本机实测（2026-08-25）
 
 > 应要求"安装 flash attn 并测试 + 按 devlog 规范跑流程"，全程在**本机**完成。最大纠正：**本机是 RTX 4080（sm_89），不是 devlog 一直默认的 RTX 5060 Ti（sm_120）**——这让 sm120 专属结论在此机不成立。

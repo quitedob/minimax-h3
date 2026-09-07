@@ -1,0 +1,27 @@
+http://106.55.30.150 {
+    basic_auth {
+        comfyui $2a$14$BsNOCbenwhaAUUV3aWzAC.yVvhNNo59ACXYRKT4FSQdIOJKQNwqHK
+    }
+    reverse_proxy 127.0.0.1:8188
+}
+
+https://video.geekq.xyz:552 {
+    tls /etc/caddy/certs/video.geekq.xyz_bundle.crt /etc/caddy/certs/video.geekq.xyz.key
+
+    # Original ComfyUI editor — password-protected. Strip the /comfyui prefix
+    # so the SPA resolves its ./assets paths against ComfyUI's root.
+    handle_path /comfyui/* {
+        basic_auth {
+            comfyui $2a$14$BsNOCbenwhaAUUV3aWzAC.yVvhNNo59ACXYRKT4FSQdIOJKQNwqHK
+        }
+        reverse_proxy 127.0.0.1:8188
+    }
+    redir /comfyui /comfyui/ 308
+
+    # Root -> the public self-service video page (no password).
+    redir / /video 302
+
+    # Everything else — /video, /h3, and the queue schema (/prompt, /queue,
+    # /history, /view, /object_info, /ws, /assets/*) — is public.
+    reverse_proxy 127.0.0.1:8188
+}
