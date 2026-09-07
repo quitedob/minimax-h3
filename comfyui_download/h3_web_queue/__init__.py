@@ -7,7 +7,6 @@ POST /prompt, polls GET /history/{prompt_id} and serves the result via GET /view
 
 import base64
 import json
-import mimetypes
 import os
 import urllib.error
 import urllib.request
@@ -105,6 +104,22 @@ def _post_deepseek(payload, timeout=180):
     return choices[0]["message"]["content"].strip()
 
 
+def _image_mime(raw):
+    """Detect the actual image format from the bytes (DeepSeek decides by content,
+    not by the declared MIME or filename). Returns a MIME string, or None if the
+    file isn't one of the supported formats (JPEG/PNG/GIF/WebP).
+    """
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if raw[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if raw[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 def _describe_image(image_name):
     """VLM the uploaded reference image -> a text description. Never raises.
 
@@ -123,16 +138,18 @@ def _describe_image(image_name):
     except Exception as exc:
         return None, "read image failed: " + str(exc)
 
+    mime = _image_mime(raw)
+    if not mime:
+        return None, "unsupported image format (must be JPEG/PNG/GIF/WebP)"
+    if len(raw) > 32 * 1024 * 1024:   # inline single-image cap; body limit is 48 MiB
+        return None, "image too large for inline vision (> 32 MiB)"
+
     _load_env(ENV_PATH)
     api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not api_key or api_key == "your_deepseek_api_key_here":
         return None, "set DEEPSEEK_API_KEY"
     model = os.environ.get("DEEPSEEK_VISION_MODEL", DEFAULT_VISION_MODEL).strip() or DEFAULT_VISION_MODEL
-    try:
-        image_b64 = base64.b64encode(raw).decode("ascii")
-        mime = mimetypes.guess_type(path)[0] or "image/png"
-    except Exception as exc:
-        return None, "encode image failed: " + str(exc)
+    image_b64 = base64.b64encode(raw).decode("ascii")
 
     system = (
         "You are a visual analyst for video generation. Look at the supplied reference image and return one "
@@ -145,8 +162,10 @@ def _describe_image(image_name):
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (mime, image_b64)}},
+                # DeepSeek requires the image inside the USER message only; system
+                # carries text. Block order mirrors the doc (text then image_url).
                 {"type": "text", "text": "Describe this reference image so a video prompt can preserve its identity and visual style."},
+                {"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (mime, image_b64)}},
             ]},
         ],
         "temperature": 0.3,
