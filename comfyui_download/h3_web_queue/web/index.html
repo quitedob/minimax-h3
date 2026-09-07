@@ -460,6 +460,7 @@
         var pid = res.prompt_id;
         pendingMeta[pid] = {jobId:opts.jobId, prompt:(opts.promptText || opts.text),
           steps:opts.steps, sec:opts.sec, res:opts.w+'×'+opts.h};
+        savePending();
         setStatus('<span class="badge queued">已排队</span><span class="spinner"></span>' + esc(pid) + " — 等待开始…");
         pollTimer = setInterval(function(){ poll(pid, started); }, 4000);
         poll(pid, started);
@@ -659,7 +660,11 @@
     for (var pid in tasks){ var t=tasks[pid]; slim[pid]={prompt:t.prompt, steps:t.steps, length:t.length, res:t.res, createTime:t.createTime, startReal:t.startReal, finished:t.finished}; }
     try { localStorage.setItem('h3tasks', JSON.stringify(slim)); } catch(e){}
   }
+  // pendingMeta 也落到 localStorage,页面刷新/ComfyUI 重启后仍能把用时回写成 /h3/meta。
+  function loadPending(){ try { pendingMeta = JSON.parse(localStorage.getItem('h3pending')||'{}'); } catch(e){ pendingMeta={}; } }
+  function savePending(){ try { localStorage.setItem('h3pending', JSON.stringify(pendingMeta)); } catch(e){} }
   loadTasks();
+  loadPending();
 
   function shortId(id){ return (id||'').slice(0,8); }
   function fmt(sec){ sec=Math.max(0, Math.floor(sec||0)); var m=Math.floor(sec/60), s=sec%60; return m+':'+('0'+s).slice(-2); }
@@ -694,7 +699,9 @@
         t.value = m.data.value; t.max = m.data.max; t.lastProgress = Date.now();
         if (!t.startTs && !t.createTime) t.startTs = Date.now();
       } else if (m && (m.type==='executed'||m.type==='execution_success') && m.data && m.data.prompt_id){
-        var p2 = m.data.prompt_id; if (tasks[p2]) tasks[p2].finished = Date.now();
+        var p2 = m.data.prompt_id;
+        if (tasks[p2]){ tasks[p2].finished = Date.now(); saveTasks(); }
+        if (m.type==='execution_success') postMeta(p2);   // 一完成就回写用时,不受 5s 轮询影响
       }
     };
     ws.onclose = function(){ setTimeout(connectWS, 2000); };
@@ -717,6 +724,23 @@
     if (t.createTime && t.finished) return (t.finished - t.createTime)/1000;
     if (t.startTs && t.finished) return (t.finished - t.startTs)/1000;
     return null;
+  }
+
+  // 把一个已提交的任务回写成 /h3/meta(prompt/参数/制作用时),按输出文件名存取。
+  // 用时优先用真实结束时间(t.finished),避免轮询延迟多算;跨重启也能回填。
+  function postMeta(pid){
+    var pm = pendingMeta[pid];
+    if (!pm) return;
+    var tm = tasks[pid] || {};
+    var start = tm.startReal || tm.createTime || tm.startTs;
+    var end = tm.finished || Date.now();
+    var dur = start ? Math.max(0, Math.floor((end - start)/1000)) : null;
+    var meta = {filename:'web_' + pm.jobId + '_00001_.mp4', prompt:pm.prompt,
+                steps:pm.steps, sec:pm.sec, res:pm.res};
+    if (dur != null) meta.dur = dur;
+    api('/h3/meta', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(meta)}).catch(function(){});
+    delete pendingMeta[pid];
+    savePending();
   }
 
   function taskRow(item){
@@ -821,15 +845,7 @@
       pending.forEach(function(it){ queuedPids[it[1]] = true; });
       for (var pid in pendingMeta){
         if (queuedPids[pid]) continue;                    // 还在排/跑,等它完成
-        var pm = pendingMeta[pid];
-        var tm = tasks[pid] || {};
-        var dur = tm.createTime ? Math.floor((now - tm.createTime)/1000)
-                : tm.startTs ? Math.floor((now - tm.startTs)/1000) : null;
-        var fn = 'web_' + pm.jobId + '_00001_.mp4';
-        var meta = { filename: fn, prompt: pm.prompt, steps: pm.steps, sec: pm.sec, res: pm.res };
-        if (dur != null) meta.dur = dur;
-        api('/h3/meta', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(meta)}).catch(function(){});
-        delete pendingMeta[pid];
+        postMeta(pid);
       }
       // 视频列表来自磁盘(/h3/files),跨重启持久;最新在前
       var filesHtml='';
