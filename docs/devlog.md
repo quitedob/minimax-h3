@@ -741,4 +741,79 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - 日志确认 `Using pytorch attention`（Sage3 计数 0）→ **确为稳定栈，无 Sage3**。（文件名里的 "Sage3" 是云端工作流模板继承的节点标题，非本次实际后端。）
 - **结论：SolAttn + EasyCache(SDPA) 在本机 10s / 240 帧长任务上可靠出片，无崩溃。** 这是生产可用的长片路径；Sage3 仅短任务且需接受 GPU reset。
 
+---
 
+## 十八、FlashAttention/SageAttention 本机实测（2026-08-25）
+
+> 应要求"安装 flash attn 并测试 + 按 devlog 规范跑流程"，全程在**本机**完成。最大纠正：**本机是 RTX 4080（sm_89），不是 devlog 一直默认的 RTX 5060 Ti（sm_120）**——这让 sm120 专属结论在此机不成立。
+
+### 18.1 环境盘点（关键新事实）
+
+| 项 | 值 |
+|---|---|
+| GPU | `nvidia-smi` 单卡 **RTX 4080**，16 GB，compute 8.9（**sm_89**），非文档的 5060 Ti（sm_120） |
+| `.venv`（工作/生产栈） | Python 3.12，原 **torch 2.13.0+cu130**，但 torchvision **0.28** / torchaudio **2.11**（本就不匹配 2.13）；188 包；`ComfyUI_windows_portable/ComfyUI/main.py` 有源码、**无 python_embeded**（原便携 python 已失踪），需用 `.venv` 的 python 跑 |
+| 测试副本 | devlog§9 的 `ComfyUI_windows_portable_torch211_flash_test/` **已不存在** |
+| 系统 python | 3.9 / 3.10 / 3.11 / 3.12，**没有 3.13** |
+
+`models/` 里实际有的 wheel：
+- `flash_attn-2.8.3+cu130torch2.9.1cxx11abiTRUE-cp312-cp312-win_amd64.whl`（229 MB，**flash 实装用**）
+- `flash_attn-2.9.0+cu130torch2.11.0...-cp313-cp313-win_amd64.whl`（346 MB，**未用**——无 cp313 环境）
+- `sageattention-2.2.0+cu130torch2.10.0-cp312-cp312-win_amd64.whl`（19 MB，**sage 实装用**）
+- `sageattn3-1.0.0+cu130torch2.10.0-cp312-cp312-win_amd64.whl`（4 MB，**Blackwell/FP4 专用，sm89 用不了**）
+
+### 18.2 FlashAttention 安装与冒烟
+
+- wheel 目标 **cp312/torch2.9.1**，但 `.venv` 是 torch 2.13 → 需要降到 2.9.1。**必须三件套一起降**：torch 2.13→2.9.1、torchvision **0.28→0.24.1**（0.28 是 torch2.13 配的）、torchaudio 2.11→2.9.1。
+- **坑**：`.venv` 的 pip 是 26.2.1，**拒绝含 `%2B` 的 wheel 文件名**（URL 编码的 `+`）→ 把 wheel 复制成字面 `+` 名再装（旧 pip 23.2.1 接受 `%2B`）。
+- 需要一个 **KJNodes** 的 `PatchFlashAttentionKJ` 节点：KJNodes **不在 PyPI、也不在该仓库**；`example/ComfyUI-KJNodes` 那份**反复消失**（先找到后无中生有地没了，未 tracked）→ 直接 `git clone https://github.com/kijai/ComfyUI-KJNodes` 进 `custom_nodes/` + 装它（较轻）的 requirements。
+- **本机 ComfyUI 只有 `PatchFlashAttentionKJ` 一个缺失节点**(其余 15 个 `class_type` 全注册)——修复后 830→1080 个节点。
+- 启动：`./.venv/Scripts/python.exe -s ComfyUI_windows_portable/ComfyUI/main.py --port 8189`（python_embeded 缺失所致）。
+- 冒烟（`.tmp/flash_smoke_test.py`）：flash_attn 2.8.3 import OK，bf16 前向 `(1,8,15828,128)` 正常，**0.5 ms**（vs 同一形状 SDPA 18.1 ms——但这是原生 flash vs 慢 SDPA 的裸微基准，非 H3 上下文）。
+
+### 18.3 完整生成对照（int8_convrot TE）
+
+所有 flash 工作流是 **nvfp4-TE** 变体，引用 `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`（**磁盘上没有**；只有 `..._int8_convrot.safetensors`）→ 全部改指 **int8_convrot** 才能跑（质量略异于 doc 的 nvfp4，但 attention 路径对比有效）。
+
+受控条件（与 devlog§9 一致）：fl2va FP8 + Qwen3VL int8_convrot TE + EasyCache 0.3/0.2/0.9，864×480、124 帧、20 步、seed 42、冷启动含模型加载+采样+双 VAE 解码+MP4。**冷启动总耗时**：
+
+| 配置 | 冷启动 | 相对 SolAttn | 路由确认 |
+|---|---:|---:|---|
+| SolAttn(tau1.3 exact_kv_and_rows) | 124.80 s | 基线 | SolAttnPatch |
+| FlashAttention2 | 132.80 s | **+8.0 s（+6.4%）** | `Using flash attention 2: cast_dtype=torch.bfloat16` |
+| Flash + SolAttn + EasyCache | 119.43 s | −5.4 s | flash 先装、SolAttn 接管 H3、其余委托 flash |
+
+**热启动**（模型常驻，seed 44/45，devlog§11 的可复现指标）：
+
+| 配置 | 热启动 | 相对 SolAttn |
+|---|---:|---:|
+| SolAttn | 96.01 s | 基线 |
+| Flash + SolAttn + EasyCache | 95.43 s | **−0.6 s（±噪声，无收益）** |
+
+**结论：完全复现 devlog§9/§10/§11。** Flash 冷启动比 SolAttn **慢 +6.4%**（doc 为 +6.0%）；组合链冷启动看似最快（−5.4s），但 doc 明确该收益来自 VAE 解码/收尾**偶然**差异，**不能归因于 FlashAttention**；热启动才是权威——组合链 ≈ SolAttn（−0.6s 噪声内），即 **"热启动无提速，不值得作默认配置"**。生产推荐维持 **SolAttn + EasyCache**。
+
+### 18.4 SageAttention2 在 sm89（本轮最大新发现）
+
+用户纠正："sm89 可以用 sageattn2"。此前 devlog§6/§7 的 sage2 **硬崩 GPU** 是 **sm120** 专属（`core.py:171-178` 对 sm120 无条件走 sm89 编译的 fp8-V 内核→PTX 前向兼容->多步非法内存访问→abort→GPU reset，`research-sageattn2-h3.md:183`）。**在真实 sm89 上,sage2 有原生内核,不闪崩。**
+
+- 解包 `sageattention-2.2.0` wheel：内含 **`_qattn_sm89.cp312-win_amd64.pyd` 原生 sm89 内核** + `sm80/sm90` + `sm89_compile.py`；无 `_qattn_sm100/sm120`。
+- **版本硬约束**：sage 2.2.0 编译给 **torch 2.10.0**；塞进 torch 2.9.1 直接 `DLL load failed while importing _fused`（ABI 不相容，`_fused` 引用 torch2.10 符号）。即 **sage 要 torch 2.10，flash 要 torch 2.9.1，不能共存**。
+- 建独立 **`.venv_sage`**（torch **2.10.0+cu130**、torchvision 0.25.0、torchaudio 2.10.0、sageattention 2.2.0、triton-windows 3.7.1.post27、全套 H3/ComfyUI 栈 97 包）。**注意**：freeze 里 `flash_attn 2.8.3`(torch2.9.1 编译)进 `.venv_sage` 会把 **kornia 拖坏**(`flash_attn_2_cuda` DLL 失败) → **移除 flash_attn**(sage 不需要)。
+- **风险点(comfy-kitchen/comfy-aimdo)未爆**：两者在 torch 2.10 下 import/启动都 OK，comfy_kitchen backend cuda `available: True`、comfy-aimdo 0.4.11 正常 -> ComfyUI 0.30.0 在 torch 2.10 上顺利启动（`--port 8190`）。
+- **内核冒烟**（`.tmp/sage_smoke_test.py`，`.venv_sage`）：`from sageattention import sageattn` OK，bf16 前向 `(1,16,2048,128)` 正常，**0.4 ms**，**无闪崩** →「sm89 原生跑 sage2」坐实。
+- **完整工作流**：自建 `sage + solattn + easycache` 链 `UNET → PathchSageAttentionKJ(sage_attention=auto) → SolAttnPatch → EasyCache`（即 flash+solattn 的拓扑，把 flash 节点换成 sage 节点），TE 改 int8_convrot、seed 46、冷启动 → **成功**，`Prompt executed in 116.18 s`，日志 `Using sage attention mode: auto`，输出 MP4，**0 CUDA/DLL/abort 报错**（sm120 崩溃路径在 sm89 上**未复现**）。
+- 冷启动对比：SolAttn 124.80 / Flash 132.80 / Flash+Sol 119.43 / **Sage+Sol+EC 116.18（本轮最快）**——同样受 doc§11.3 的冷启动解码方差警告限制。
+
+### 18.5 遗留未决与坑（写清楚，免得再踩）
+
+1. **sage 是否真正在 H3 上执行内核**：`Using sage attention mode: auto` 只说明 override 装上了；`PathchSageAttentionKJ` 走 `optimized_attention_override` 通道（与 SolAttn 同通道），但 H3 `low_precision_attention=False` 的 gate 是否令 sage 静默退回 SDPA——`research-sageattn-node-integration.md:42` 读代码预测**会退回**。本次真跑没区分；需 `torch.profiler`（`h3_profiler.py` 节点）跑一步看内核符号（doc§109 方法）才能坐实。
+2. **time** 数据**不可与 doc §9-11 直接比**：本机是 RTX 4080（强于 5060 Ti）、TE 是 int8_convrot（非 nvfp4）、热启动 cache 热、SoFl易缓存——绝对秒数不同，**相对方向**（flash 慢于 solattn、组合链热启动无收益）一致。
+3. **模型缺口**：`qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`（nvfp4-TE）磁盘未放；只跑得了 int8_convrot。devlog 说 F: junction 共享模型——本机 **F: 未挂载/不可见**。
+4. **pip 26 vs `%2B`**：本地 wheel 名带 `%2B` 会被新 pip 拒；装前复制成字面 `+` 名。
+5. **环境体积**：新增 `.venv`(降到 torch2.9.1,含 flash)与 `.venv_sage`(torch2.10,含 sage)两套互斥环境；`.venv_flash`(早期 torch2.9.1 临时测试)多余可删。运行端口：flash=8189，sage=8190（`.venv_sage`）。
+
+### 18.6 本轮产物
+
+- 输出 MP4（`ComfyUI_windows_portable/ComfyUI/output/video/`）：`MiniMax_H3_int8_solattn_easycache_00001_.mp4`、`_solattn_hot44_00001_.mp4`、`_flashattn_easycache_00001_/00002_.mp4`、`_flashsolexactkv_easycache_00001_.mp4`、`_flashsol_hot45_00001_.mp4`、`_sagesol_easycache_00001_.mp4`。
+- 临时脚本在 `.tmp/`：`flash_smoke_test.py`、`sage_smoke_test.py`、`submit_8189/8190.py`、各 `*_int8.json` 工作流 copy、`freeze_minus_torch.txt`、`venv_freeze.txt`。
+- 记忆已写入 `memory/`：`project-machine-is-rtx4080`、`project-flash-setup-works`、`project-sage2-works-on-sm89`。
