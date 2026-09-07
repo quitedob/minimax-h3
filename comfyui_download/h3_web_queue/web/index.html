@@ -144,6 +144,27 @@
   .qdl:hover{text-decoration:underline}
   .qprev{flex:none;color:var(--dim);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;margin-right:10px}
   .qprev:hover{color:var(--acc);text-decoration:underline}
+
+  /* 参考图片上传 + 最终提示词预览 */
+  .filewrap{display:flex;align-items:flex-start;gap:12px;margin-top:6px;flex-wrap:wrap}
+  .filebtn{display:inline-block;background:#0c1018;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;flex:none}
+  .filebtn:hover{border-color:var(--acc)}
+  .filebtn input{display:none}
+  .refprev{width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#0c1018}
+  .clearimg{color:var(--err);font-size:12px;cursor:pointer;text-decoration:none;align-self:center}
+  .clearimg:hover{text-decoration:underline}
+  #prompt-preview{margin-top:16px;display:none;border-top:1px solid var(--line);padding-top:14px}
+  #prompt-preview.visible{display:block}
+  #finalPrompt{min-height:110px}
+  .pnote{font-size:12px;color:var(--dim);margin:8px 0 4px;white-space:pre-wrap;word-break:break-word}
+  .pnote.warn{color:var(--warn)}
+  .pp-actions{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+
+  /* 两种生成方式:无图 / 带图 选项卡 */
+  .tabs{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--line)}
+  .tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);font-weight:600;font-size:14px;padding:9px 10px;cursor:pointer;border-radius:0;filter:none}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--text);border-bottom-color:var(--acc)}
 </style>
 </head>
 <body>
@@ -152,15 +173,55 @@
   <p class="sub">输入一段视频灵感,提交到生产
      <span class="muted">NVFP4&nbsp;+&nbsp;SolAttn&nbsp;+&nbsp;EasyCache</span> ComfyUI 栈,完成后可下载。</p>
 
-  <label for="prompt">视频灵感</label>
-  <textarea id="prompt" placeholder="例如:一只金毛幼犬在金色时刻的阳光下穿过公园,镜头平滑跟随,温暖的自然光线,浅景深,轻柔的环境音"></textarea>
+  <div class="tabs">
+    <button type="button" class="tab active" data-pane="text">文生视频(无图)</button>
+    <button type="button" class="tab" data-pane="img">图生视频(带图)</button>
+  </div>
 
-  <label class="toggle" for="deepseek">
-    <input type="checkbox" id="deepseek" checked />
+  <div id="pane-text" class="pane">
+    <label for="prompt">视频灵感</label>
+    <textarea id="prompt" placeholder="例如:一只金毛幼犬在金色时刻的阳光下穿过公园,镜头平滑跟随,温暖的自然光线,浅景深,轻柔的环境音"></textarea>
+    <label class="toggle" for="deepseek">
+      <input type="checkbox" id="deepseek" checked />
+      <span class="switch"></span>
+      <span>使用 DeepSeek 改写提示词</span>
+    </label>
+    <p class="muted">开启:先由 DeepSeek 按 H3 prompt 规范改写你的灵感,再送去生成;关闭:直接把文字当作完整 prompt 送入。</p>
+  </div>
+
+  <div id="pane-img" class="pane" hidden>
+    <label for="prompt-img">视频灵感 <span class="muted" id="promptImgHint">(可留空,关上 AI 则必填)</span></label>
+    <textarea id="prompt-img" placeholder="可选:补充画面、风格、镜头、音效等。"></textarea>
+    <label for="refimg">参考图片 <span class="muted">(必选一张)</span></label>
+    <div class="filewrap">
+      <label class="filebtn" for="refimg">选择图片<input type="file" id="refimg" accept="image/*" /></label>
+      <img id="refprev" class="refprev" hidden alt="参考图预览" />
+      <a id="clearimg" class="clearimg" hidden>清除</a>
+    </div>
+    <label class="toggle" for="aidImg">
+      <input type="checkbox" id="aidImg" checked />
+      <span class="switch"></span>
+      <span>使用 AI 辅助(读图 + 改写提示词)</span>
+    </label>
+    <p class="muted">开启:AI 读取图片内容并生成 Ref2VA 提示词(引用 &lt;Picture 1&gt;),你可再编辑;关闭:不读图不改写,用你写的文字当提示词(建议引用 &lt;Picture 1&gt;)。</p>
+  </div>
+
+  <label class="toggle" for="previewPrompt">
+    <input type="checkbox" id="previewPrompt" checked />
     <span class="switch"></span>
-    <span>使用 DeepSeek 改写提示词</span>
+    <span>预览并可编辑最终提示词</span>
   </label>
-  <p class="muted">开启:先由 DeepSeek 按 H3 prompt 规范改写你的灵感,再送去生成;关闭:直接把文字当作完整 prompt 送入。</p>
+  <p class="muted">开启:先由 AI / DeepSeek 生成最终提示词并展示,你可修改后再确认生成;关闭:直接生成。</p>
+
+  <div id="prompt-preview">
+    <label for="finalPrompt">最终提示词 (可编辑)</label>
+    <textarea id="finalPrompt"></textarea>
+    <div id="promptNote" class="pnote"></div>
+    <div class="pp-actions">
+      <button id="confirm" type="button">确认并生成</button>
+      <a id="back" class="clearimg">返回修改</a>
+    </div>
+  </div>
 
   <details>
     <summary>高级设置</summary>
@@ -168,7 +229,6 @@
       <div><label for="seconds">时长 (秒, 5-8)</label><input id="seconds" type="number" min="5" max="8" step="1" value="5" /></div>
       <div><label for="steps">采样步数(≥10)</label><input id="steps" type="number" min="10" step="1" /></div>
       <div><label for="seed">Seed</label><input id="seed" type="number" step="1" /></div>
-      <div><label for="mode">DeepSeek 模式</label><select id="mode"></select></div>
       <div><label for="res">分辨率</label><select id="res"><option value="480p">480p (864×480)</option><option value="720p">720p (1280×720)</option></select></div>
     </div>
   </details>
@@ -206,7 +266,12 @@
   var $ = function(id){ return document.getElementById(id); };
   var go = $("go"), statusEl = $("status"), errEl = $("err"),
       resultEl = $("result"), preview = $("preview"),
-      fnameEl = $("fname"), downloadEl = $("download");
+      fnameEl = $("fname"), downloadEl = $("download"),
+      refimg = $("refimg"), refPrev = $("refprev"), clearImg = $("clearimg"),
+      promptPreview = $("prompt-preview"), finalPrompt = $("finalPrompt"),
+      promptNote = $("promptNote"), confirm = $("confirm"), back = $("back"),
+      previewPrompt = $("previewPrompt"), aidImg = $("aidImg"),
+      pendingOpts = null;   // 预览模式下暂存的本次提交参数,确认时取回
 
   // Find a node of a given class within a (possibly cloned) graph.
   function findIn(graph, cls){ for (var id in graph){ if (graph[id].class_type === cls) return graph[id]; } return null; }
@@ -233,11 +298,24 @@
   if (noise && noise.inputs && noise.inputs.noise_seed != null) $("seed").value = noise.inputs.noise_seed;
   if (sigmas && sigmas.inputs && sigmas.inputs.steps) $("steps").value = sigmas.inputs.steps;
 
-  // DeepSeek modes for the H3DeepSeekPrompt node.
-  var MODES = ["T2VA", "I2VA", "FL2VA", "L2VA", "Ref2VA"];
-  var modeSel = $("mode");
-  MODES.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=m; modeSel.appendChild(o); });
-  modeSel.value = "T2VA";
+  // 两种生成方式:无图 = 文生视频(T2VA);带图 = 参考生视频(Ref2VA, AI 读图)。
+  var activePane = "text";
+  function switchPane(p){
+    activePane = p;
+    ["text","img"].forEach(function(k){ $("pane-" + k).hidden = (k !== p); });
+    document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-pane") === p); });
+    refreshGo();
+  }
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.addEventListener("click", function(){ switchPane(t.getAttribute("data-pane")); });
+  });
+  function currentText(){ return activePane === "img" ? $("prompt-img").value : $("prompt").value; }
+  function modeFor(){ return activePane === "img" ? "Ref2VA" : "T2VA"; }
+  function canGenerate(){
+    if (activePane === "img") return hasImage() && (aidImg.checked || !!$("prompt-img").value.trim()); // 带图:必选图;AI 开则文字可空,AI 关则必填文字
+    return !!$("prompt").value.trim();              // 无图:必填文字
+  }
+  function refreshGo(){ go.disabled = active || !canGenerate(); }
 
   // Resolution presets: 480p (default, proven on this GPU) vs 720p.
   var resSel = $("res");
@@ -302,78 +380,222 @@
     }).catch(function(e){ showError("下载失败: " + (e.message || e)); });
   }
 
-  var active = false;
-  function busy(on){
-    active = on;
-    go.disabled = on || !$("prompt").value.trim();
-    go.textContent = on ? "生成中…" : "生成视频";
+  // ---- 参考图上传 + 提示词预生成 + Ref2VA 图拼接 ----
+  function hasImage(){ return !!(refimg.files && refimg.files[0]); }
+
+  function uploadImage(file){
+    var fd = new FormData();
+    fd.append("image", file);          // ComfyUI /upload/image 的字段
+    fd.append("type", "input");
+    return api("/upload/image", {method:"POST", body:fd});
   }
-  $("prompt").addEventListener("input", function(){ go.disabled = active || !$("prompt").value.trim(); });
 
-  go.addEventListener("click", function(){
-    var text = $("prompt").value.trim();
-    if (!text || active){ return; }
-    errEl.style.display = "none";
-    resultEl.classList.remove("visible");
-    var jobId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    var started = Date.now();
-    busy(true);
+  function promptAPI(text, imageName, mode){
+    var body = {user_text:text, mode:mode};
+    if (imageName) body.image_name = imageName;
+    return fetch("/h3/prompt", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)})
+      .then(function(r){
+        return r.json().then(function(j){
+          if (!r.ok){ var e = new Error(j.error || ("HTTP "+r.status)); e.status=r.status; throw e; }
+          return j;
+        });
+      });
+  }
 
-    // Clone the template so repeated submissions don't pollute each other.
+  function dimsFor(){
+    var r = $("res").value || "480p";
+    return r === "720p" ? {w:1280, h:720} : {w:864, h:480};
+  }
+  function stepsFor(){ var s=parseInt($("steps").value,10); return (s && s>=10) ? s : 10; }
+
+  // 参考图时切到 Ref2VA:改模板里的 cond 节点 + 新增 LoadImage + 换 ref2va 扩散模型。
+  function toRef2va(graph, imageName, promptText, w, h, len){
+    graph.cond.class_type = "MiniMaxH3ReferenceToVideo";
+    graph.cond.inputs = {
+      clip:["clip",0], vae:["vae_video",0], audio_vae:["vae_audio",0],
+      prompt:promptText, width:w, height:h, length:len,
+      ref_image_size:"match",
+      "ref_images.ref_image_0":["refimg_load",0]   // ComfyUI autogrow 点分键
+    };
+    graph.refimg_load = {"class_type":"LoadImage","inputs":{"image":imageName}};
+    var un = findIn(graph, "UNETLoader");
+    if (un && un.inputs) un.inputs.unet_name = "minimax_h3_ref2va_pruned_fp8_scaled.safetensors";
+  }
+
+  function buildGraph(opts){
+    // opts: {text|null, promptText|null, imageName|null, useDeepseek, modeVal, w,h,len, seed, steps, jobId}
     var graph = JSON.parse(JSON.stringify(template));
-    var cCond = findIn(graph, "MiniMaxH3ImageToVideo");
+    delete graph.h3ds;
+    var useInGraph = !opts.imageName && opts.useDeepseek && opts.promptText == null; // 内联 DeepSeek 改写
+    var cond = findIn(graph, "MiniMaxH3ImageToVideo");
+    if (opts.imageName){
+      toRef2va(graph, opts.imageName, opts.promptText, opts.w, opts.h, opts.len);
+    } else if (useInGraph){
+      graph.h3ds = {"class_type":"H3DeepSeekPrompt","inputs":{"user_text":opts.text,"mode":opts.modeVal}};
+      cond.inputs.prompt = ["h3ds", 0];
+      cond.inputs.width = opts.w; cond.inputs.height = opts.h; cond.inputs.length = opts.len;
+    } else {
+      cond.inputs.prompt = (opts.promptText != null ? opts.promptText : opts.text);
+      cond.inputs.width = opts.w; cond.inputs.height = opts.h; cond.inputs.length = opts.len;
+    }
     var cNoise = findIn(graph, "RandomNoise");
     var cSigmas = findIn(graph, "BasicScheduler");
     var cSave = findIn(graph, "SaveVideo");
+    if (cNoise && cNoise.inputs && opts.seed) cNoise.inputs.noise_seed = opts.seed;
+    if (cSigmas && cSigmas.inputs) cSigmas.inputs.steps = opts.steps;
+    if (cSave && cSave.inputs) cSave.inputs.filename_prefix = "video/web_" + opts.jobId;
+    return graph;
+  }
 
-    var useDeepseek = $("deepseek").checked;
-    var modeVal = $("mode").value || "T2VA";
-
-    if (cCond && cCond.inputs){
-      delete graph.h3ds;
-      if (useDeepseek){
-        // Feed the raw idea to H3DeepSeekPrompt; its output drives the H3 prompt.
-        graph.h3ds = {"class_type": "H3DeepSeekPrompt", "inputs": {"user_text": text, "mode": modeVal}};
-        cCond.inputs.prompt = ["h3ds", 0];
-      } else {
-        cCond.inputs.prompt = text;
-      }
-    }
-    if (cCond && cCond.inputs){
-      var r = $("res").value || "480p";
-      var dims = r === "720p" ? {w:1280, h:720} : {w:864, h:480};
-      cCond.inputs.width = dims.w;
-      cCond.inputs.height = dims.h;
-      cCond.inputs.length = framesForSeconds(parseInt($("seconds").value,10) || 5);
-    }
-    if (cNoise && cNoise.inputs && $("seed").value){ cNoise.inputs.noise_seed = parseInt($("seed").value,10) || 0; }
-    if (cSigmas && cSigmas.inputs){
-      var sSteps = parseInt($("steps").value,10);
-      // 最少 10 步,否则画面不可看
-      cSigmas.inputs.steps = (sSteps && sSteps >= 10) ? sSteps : 10;
-    }
-    if (cSave && cSave.inputs){ cSave.inputs.filename_prefix = "video/web_" + jobId; }
-
+  function submitGraph(graph, opts, started){
     var pollTimer = null;
     setStatus('<span class="spinner"></span>提交中…');
-    api("/prompt", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({prompt: graph, client_id: CLIENT_ID})
-    }).then(function(res){
-      if (res.node_errors && Object.keys(res.node_errors).length){
-        throw new Error("节点校验错误: " + JSON.stringify(res.node_errors));
+    api("/prompt", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({prompt:graph, client_id:CLIENT_ID})})
+      .then(function(res){
+        if (res.node_errors && Object.keys(res.node_errors).length){
+          throw new Error("节点校验错误: " + JSON.stringify(res.node_errors));
+        }
+        var pid = res.prompt_id;
+        pendingMeta[pid] = {jobId:opts.jobId, prompt:(opts.promptText || opts.text),
+          steps:opts.steps, sec:opts.sec, res:opts.w+'×'+opts.h};
+        setStatus('<span class="badge queued">已排队</span><span class="spinner"></span>' + esc(pid) + " — 等待开始…");
+        pollTimer = setInterval(function(){ poll(pid, started); }, 4000);
+        poll(pid, started);
+      })
+      .catch(function(e){ busy(false); showError(e.message || String(e)); });
+  }
+
+  function doFinalSubmit(opts, started){
+    var graph = buildGraph(opts);
+    submitGraph(graph, opts, started);
+  }
+
+  // 预览模式:展示最终提示词供用户编辑/确认。
+  function showPreview(opts, h3prompt, noteHtml){
+    pendingOpts = opts;
+    finalPrompt.value = h3prompt;
+    promptNote.innerHTML = noteHtml;
+    promptNote.classList.toggle("warn", /⚠|失败|error/i.test(noteHtml || ''));
+    promptPreview.classList.add("visible");
+    go.textContent = "等待确认…";
+    setStatus('<span class="badge queued">提示词已生成</span>请在下方确认/修改,再点「确认并生成」');
+  }
+
+  // 参考图选择/清除:即时预览缩略图,并自动把模式切到 Ref2VA。
+  function renderRefPrev(){
+    if (hasImage()){
+      refPrev.src = URL.createObjectURL(refimg.files[0]);
+      refPrev.hidden = false;
+      clearImg.hidden = false;
+    } else {
+      refPrev.hidden = true; clearImg.hidden = true;
+      refPrev.removeAttribute("src");
+    }
+    refreshGo();
+  }
+  refimg.addEventListener("change", renderRefPrev);
+  clearImg.addEventListener("click", function(e){ e.preventDefault(); refimg.value=""; renderRefPrev(); });
+
+  var active = false;
+  function busy(on){
+    active = on;
+    refreshGo();
+    go.textContent = on ? "生成中…" : "生成视频";
+  }
+  $("prompt").addEventListener("input", refreshGo);
+  $("prompt-img").addEventListener("input", refreshGo);
+  function updateImgHint(){
+    $("promptImgHint").textContent = aidImg.checked ? "(可留空,AI 会自动读图补全)" : "(必填,关闭 AI 后请自己写提示词)";
+  }
+  aidImg.addEventListener("change", function(){ updateImgHint(); refreshGo(); });
+  updateImgHint();
+
+  // 主按钮:按当前选项卡(无图/带图)预生成提示词或直接提交。
+  go.addEventListener("click", async function(){
+    if (active){ return; }
+    if (!canGenerate()){ return; }
+    var imgMode = activePane === "img";
+    var useDeepseek = $("deepseek").checked;
+    var idea = currentText().trim();
+    errEl.style.display = "none";
+    resultEl.classList.remove("visible");
+    var jobId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    var sec = parseInt($("seconds").value,10) || 5;
+    var d = dimsFor();
+    var base = {
+      text: idea || "Generate a cinematic video that keeps the reference image's subject, style, palette and lighting.",
+      useDeepseek: useDeepseek,
+      jobId: jobId, sec: sec, w: d.w, h: d.h, len: framesForSeconds(sec),
+      seed: $("seed").value, steps: stepsFor(),
+      imageName: null, promptText: null, modeVal: imgMode ? "Ref2VA" : "T2VA"
+    };
+    busy(true);
+    setStatus('<span class="spinner"></span>' + (imgMode ? '上传参考图 / AI 读图生成提示词…' : '生成提示词…'));
+
+    try {
+      if (imgMode){
+        // 带图:先上传图到 input 目录供 Ref2VA 引用,再按「AI 辅助开关」决定提示词来源。
+        var up = await uploadImage(refimg.files[0]);
+        base.imageName = up.name || up.filename;
+        base.modeVal = "Ref2VA";
+        if (aidImg.checked){
+          var r = await promptAPI(base.text, base.imageName, "Ref2VA");
+          base.promptText = r.h3_prompt;
+          if (!previewPrompt.checked){ return doFinalSubmit(base, Date.now()); }
+          var note = (r.image_description ? '参考图视觉描述:\n' + r.image_description : '')
+                   + (r.vlm_error ? '\n⚠ 视觉模型读图失败(仍按文字生成): ' + r.vlm_error : '');
+          if (!note.trim()) note = 'AI 已读图 + DeepSeek skill 生成,可编辑后提交。';
+          showPreview(base, r.h3_prompt, note);
+          return;
+        }
+        // AI 关闭:不读图不改写,用用户写的原文当提示词。
+        base.promptText = base.text;
+        if (previewPrompt.checked){
+          showPreview(base, base.text, 'AI 辅助已关闭:未读图/未改写,使用你写的文字作为提示词(别忘引用 <Picture 1> 才能用上参考图)。');
+          return;
+        }
+        return doFinalSubmit(base, Date.now());
       }
-      var pid = res.prompt_id;
-      // 记录本次任务的元数据,跑完后回写到 /h3/meta(供 /h3/files 展示 prompt/参数/制作耗时)
-      pendingMeta[pid] = { jobId: jobId, prompt: text,
-        steps: cSigmas ? cSigmas.inputs.steps : null,
-        sec: parseInt($("seconds").value,10) || 5,
-        res: cCond ? (cCond.inputs.width+'×'+cCond.inputs.height) : '' };
-      setStatus('<span class="badge queued">已排队</span><span class="spinner"></span>' + esc(pid) + " — 等待开始…");
-      pollTimer = setInterval(function(){ poll(pid, started); }, 4000);
-      poll(pid, started);
-    }).catch(function(e){ busy(false); showError(e.message || String(e)); });
+      // 无图:文生视频。
+      if (previewPrompt.checked){
+        if (useDeepseek){
+          var r2 = await promptAPI(base.text, null, "T2VA");
+          base.promptText = r2.h3_prompt;
+          showPreview(base, r2.h3_prompt, '已用 DeepSeek + skill 改写为最终提示词,可编辑后提交。');
+        } else {
+          base.promptText = base.text;
+          showPreview(base, base.text, '未启用改写,把你的原文当作最终提示词,可编辑后提交。');
+        }
+        return;
+      }
+      base.promptText = useDeepseek ? null : base.text; // null => 图内 DeepSeek 改写
+      return doFinalSubmit(base, Date.now());
+    } catch(e){
+      busy(false); showError(e.message || String(e));
+    }
+  });
+
+  // 预览模式下:用编辑后的最终提示词确认提交。
+  confirm.addEventListener("click", function(){
+    if (!pendingOpts){ return; }
+    var opts = pendingOpts;
+    opts.promptText = finalPrompt.value.trim();
+    opts.sec = parseInt($("seconds").value,10) || 5;
+    var dd = dimsFor();
+    opts.w = dd.w; opts.h = dd.h; opts.len = framesForSeconds(opts.sec);
+    opts.steps = stepsFor();
+    promptPreview.classList.remove("visible");
+    busy(true);
+    doFinalSubmit(opts, Date.now());
+  });
+  back.addEventListener("click", function(e){
+    e.preventDefault();
+    promptPreview.classList.remove("visible");
+    pendingOpts = null;
+    busy(false);
+    setStatus("");
   });
 
   function poll(pid, started){
@@ -649,7 +871,7 @@
     el.classList.toggle('open', !!openPids[pid]);
   });
 
-  renderTasks(); connectWS();
+  renderTasks(); connectWS(); refreshGo();
   setInterval(renderTasks, 5000);
   setInterval(tick, 1000);
 })();

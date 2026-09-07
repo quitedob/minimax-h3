@@ -5,8 +5,12 @@ ComfyUI also serves a small HTML frontend. The frontend submits to ComfyUI's own
 POST /prompt, polls GET /history/{prompt_id} and serves the result via GET /view.
 """
 
+import base64
 import json
+import mimetypes
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from aiohttp import web
@@ -35,6 +39,123 @@ def _load_workflow() -> dict:
             return json.loads(path.read_text(encoding="utf-8"))
     raise FileNotFoundError("No H3 cloud workflow template found; looked in: "
                             + ", ".join(str(p) for p in TEMPLATE_CANDIDATES))
+
+
+# --- DeepSeek prompt generation: .env + local skill + vision (self-contained).
+# The h3_deepseek_prompt node loads under a private module name in ComfyUI, so we
+# can't import it here; the helpers below mirror it so the page can generate the
+# final prompt up-front and let the user review/edit it before submitting.
+PROJECT_ROOT = NODE_ROOT.parents[2]
+ENV_PATH = PROJECT_ROOT / ".env"
+SKILL_PATH = PROJECT_ROOT / ".claude" / "skills" / "h3-prompt-writing"
+DEFAULT_BASE_URL = "https://api.deepseek.com"
+DEFAULT_MODEL = "deepseek-v4-flash"
+DEFAULT_VISION_MODEL = "deepseek-v4-flash-vision-exp"
+
+
+def _load_env(path):
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _skill_prompt():
+    files = [SKILL_PATH / "SKILL.md",
+             SKILL_PATH / "references" / "base-en.txt",
+             SKILL_PATH / "references" / "ref-en.txt"]
+    missing = [str(p) for p in files if not p.exists()]
+    if missing:
+        raise RuntimeError("H3 prompt skill files are missing: " + ", ".join(missing))
+    return "\n\n".join("===== {} =====\n{}".format(p.as_posix(), p.read_text(encoding="utf-8"))
+                       for p in files)
+
+
+def _post_deepseek(payload, timeout=180):
+    """POST a chat/completions payload to the DeepSeek endpoint and return content."""
+    _load_env(ENV_PATH)
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    base_url = os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
+    if not api_key or api_key == "your_deepseek_api_key_here":
+        raise RuntimeError("Set DEEPSEEK_API_KEY in " + str(ENV_PATH))
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"DeepSeek API HTTP {error.code}: {detail[:500]}") from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(f"DeepSeek API connection failed: {error.reason}") from error
+    choices = result.get("choices") or []
+    if not choices or not choices[0].get("message", {}).get("content"):
+        raise RuntimeError("DeepSeek API returned no prompt content")
+    return choices[0]["message"]["content"].strip()
+
+
+def _describe_image(image_name):
+    """VLM the uploaded reference image -> a text description. Never raises.
+
+    Returns (description_or_None, error_or_None) so the prompt pipeline degrades
+    gracefully if the vision model is unavailable or rejects the request.
+    """
+    input_dir = folder_paths.get_input_directory()
+    if not input_dir:
+        return None, "no input directory"
+    path = os.path.abspath(os.path.join(input_dir, image_name))
+    if not path.startswith(os.path.abspath(input_dir)) or not os.path.isfile(path):
+        return None, "image not found in input directory"
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as exc:
+        return None, "read image failed: " + str(exc)
+
+    _load_env(ENV_PATH)
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not api_key or api_key == "your_deepseek_api_key_here":
+        return None, "set DEEPSEEK_API_KEY"
+    model = os.environ.get("DEEPSEEK_VISION_MODEL", DEFAULT_VISION_MODEL).strip() or DEFAULT_VISION_MODEL
+    try:
+        image_b64 = base64.b64encode(raw).decode("ascii")
+        mime = mimetypes.guess_type(path)[0] or "image/png"
+    except Exception as exc:
+        return None, "encode image failed: " + str(exc)
+
+    system = (
+        "You are a visual analyst for video generation. Look at the supplied reference image and return one "
+        "concise paragraph describing the subject(s), style, palette, lighting, mood, camera framing, and any "
+        "distinct visual identity — exactly what a video-generation prompt needs to keep that look. Do not wrap "
+        "your answer in Markdown fences; if the user's idea is in Chinese, answer in Chinese."
+    )
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (mime, image_b64)}},
+                {"type": "text", "text": "Describe this reference image so a video prompt can preserve its identity and visual style."},
+            ]},
+        ],
+        "temperature": 0.3,
+        "stream": False,
+    }
+    try:
+        return _post_deepseek(payload), None
+    except Exception as exc:
+        return None, str(exc)
 
 
 routes = PromptServer.instance.routes
@@ -207,6 +328,66 @@ async def h3_download(request):
         full,
         headers={"Content-Disposition": 'attachment; filename="%s"' % filename},
     )
+
+
+@routes.post("/h3/prompt")
+async def h3_prompt(request):
+    """Generate the final H3 prompt for the page.
+
+    (1) If a reference image was uploaded, run the vision model over it to get a
+        description. (2) Feed the user's idea (+ that description) through the
+        local h3-prompt-writing skill via DeepSeek to produce the final Ref2VA /
+        T2VA prompt. Returns it so the page can show it for editing before submit.
+        The vision step degrades gracefully (vlm_error) so a model hiccup never
+        blocks prompt generation.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    user_text = (body.get("user_text") or "").strip()
+    mode = (body.get("mode") or "T2VA").strip()
+    if not user_text:
+        return web.json_response({"error": "Enter a video idea"}, status=400)
+
+    image_description, vlm_error = None, None
+    image_name = (body.get("image_name") or "").strip()
+    if image_name:
+        image_description, vlm_error = _describe_image(image_name)
+
+    skill = _skill_prompt()
+    idea = user_text
+    if image_description:
+        idea += "\n\nReference image visual description:\n" + image_description
+
+    _load_env(ENV_PATH)
+    model = os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    instruction = (
+        f"Input mode: {mode}. Rewrite the user's idea into the complete MiniMax H3 prompt. "
+        "Return only the final prompt, with the exact fields and section order required by the skill. "
+        "Do not explain your work or wrap the result in Markdown fences.\n\n"
+        f"User idea:\n{idea}"
+    )
+    try:
+        h3_prompt = _post_deepseek({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": skill},
+                {"role": "user", "content": instruction},
+            ],
+            "temperature": 0.7,
+            "stream": False,
+        })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=502)
+
+    return web.json_response({
+        "h3_prompt": h3_prompt,
+        "image_description": image_description,
+        "vlm_error": vlm_error,
+        "mode": mode,
+    })
 
 
 NODE_CLASS_MAPPINGS = {}
