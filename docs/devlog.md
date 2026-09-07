@@ -779,7 +779,34 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - 生成耗时(用时)对旧文件不可回补:ComfyUI 只把 prompt 图写入 mp4,不写 start/end 时间;history 又一重启即清。
 
 ### 17.7 文件
-- 自定义节点 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/{__init__.py,web/index.html}`(gitignored,ComfyUI 实例不入库)。
-- 云端 `/etc/caddy/Caddyfile` + 备份若干;记忆 `public-url-map-video-comfyui.md`。
+- 自定义节点 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/{__init__.py,web/index.html}`(gitignored,ComfyUI 实例不入库);入库副本 `comfyui_download/h3_web_queue/`。
+- 生产启动脚本 `ComfyUI_sage3_py312/start_web_server.ps1`(入库 `comfyui_download/start_web_server.ps1`)。
+- 云端 `/etc/caddy/Caddyfile` + 备份若干;入库参考 `comfyui_download/deploy-cloud/Caddyfile.video.comfyui`。记忆 `public-url-map-video-comfyui.md`。
+
+### 17.8 部署说明(重建 ComfyUI 时照做)
+
+**安装自定义节点**
+1. 把 `comfyui_download/h3_web_queue/` 整个目录复制到 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/`(`__init__.py` + `web/index.html`)。
+2. 工作流模板:确认 `ComfyUI_sage3_py312/cloud_h3_sage3_solattn_easycache_prompt.json` 存在(节点会按此拼接图;若无,回退到 `comfyui_download/cloud_h3_sage3_solattn_easycache_prompt.json`)。
+
+**前置依赖**
+- `av`(pyav):`/h3/files` 用它从 mp4 元数据恢复 prompt/参数。`ComfyUI_sage3_py312/venv` 已含 18.1.0;若缺失 `venv\Scripts\pip install av`。无 `av` 时 `/h3/files` 仍能列文件,只是 meta(prompt/res/sec)为空。
+
+**启动(生产稳定栈)**
+- 用 `ComfyUI_sage3_py312/start_web_server.ps1`(内部设 `COMFY_SAGE3=0`,SolAttn+EasyCache+SDPA fallback,无 Sage3)→ 启动 `venv\Scripts\python.exe main.py --extra-model-paths-config extra_model_paths.yaml --disable-auto-launch --listen 127.0.0.1 --port 8188`。
+- 或用云端 launcher `F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat`(起 ComfyUI + SSH 隧道 watchdog;登录计划任务 `ComfyUI Cloud Tunnel` 调用它)。
+
+**端点(路由注册于启动时,改动需重启)**
+- `GET /video`、`GET /h3` → 单输入页(每次请求重读 `web/index.html`,故**前端改动实时生效、无需重启**)。
+- `GET /h3/download?filename=..&subfolder=..&type=..` → `Content-Disposition: attachment` 强制下载(手机 Safari 识别)。
+- `GET /h3/files` → 只列 `web_*.mp4`,用 pyav 读 mp4 元数据合并 meta(prompt/参数/时长)。缓存于 `_AV_META_CACHE`(按 mtime)。
+- `POST /h3/meta` → 存 `{filename:{prompt,steps,sec,res,dur}}` 到 `output/webmeta.json`(生成耗时)。
+
+**云端 Caddy(公网路由)**
+- `/` 302→`/video`(公开);`/comfyui` Basic Auth(编辑器);其余 API/`/h3/*` 公开。仅含 bcrypt 哈希,明文密码在 `F:\python\llamacpp\deploy-cloud\comfyui-cloud-auth.txt`(勿入 git)。
+
+**验证**
+- `curl http://127.0.0.1:8188/video` → 200;`/h3/download?...` 头含 `attachment`;`/h3/files` 返回 `web_*.mp4` 且带 meta。
+- 隧道:确认 `ssh.exe` 进程存在(`-R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150`);否则外网 502。
 
 
