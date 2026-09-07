@@ -741,4 +741,45 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - 日志确认 `Using pytorch attention`（Sage3 计数 0）→ **确为稳定栈，无 Sage3**。（文件名里的 "Sage3" 是云端工作流模板继承的节点标题，非本次实际后端。）
 - **结论：SolAttn + EasyCache(SDPA) 在本机 10s / 240 帧长任务上可靠出片，无崩溃。** 这是生产可用的长片路径；Sage3 仅短任务且需接受 GPU reset。
 
+---
+
+## 十七、Cloud Web 排队页 `h3_web_queue` 与公网路径重构（2026-09-07）
+
+本会话在 `ComfyUI_sage3_py312`（生产 8188）新增一个**单输入视频排队页**,并打通公网;纯前端 + 自定义节点,与 Sage3/SolAttn 无耦合。
+
+### 17.1 前端页面（/video）
+- 单输入框(视频灵感)+「生成视频」;DeepSeek 改写默认开(可按 `user_text` 直入)。
+- 提交走 `POST /prompt` → 轮询 `/history/{pid}` → 出片预览 + 下载。
+- 全局任务列表:运行/排队(来自 `/queue`)+「视频(磁盘)」(来自 `/h3/files`)。
+- 高级设置:步数 ≥10(默认20)、时长 5-8s(默认5s)、分辨率 480p/720p、DeepSeek 模式。
+- 手机自适应 CSS(`@media max-width 640px`)。
+
+### 17.2 公网路径重构（云端 Caddy + SSH 隧道）
+- `/` → 302 → `/video`(公开);`/comfyui` → 原 ComfyUI 编辑器(**Basic Auth**);其余 `/object_info /prompt /history /view /ws /assets/*` 公开。
+- 云端备份 `/etc/caddy/Caddyfile.bak-20260903164718`、`Caddyfile.bak-auth-20260903171550`。
+- **关键**:ComfyUI `/history` 是**内存态、重启即清空** → 完成的视频列表改扫磁盘 `/h3/files`,不再依赖 history。
+
+### 17.3 下载修复（手机 Safari 痛点）
+- ComfyUI `/view` 返回裸 `filename="..."`(视为 inline)→ Safari **播放而非保存**。
+- 新增 `/h3/download?...` → **`Content-Disposition: attachment`**,所有浏览器(含 iOS Safari)强制保存。
+- 页面「下载」走 `/h3/download`,「预览」走 `/view`(播放)。
+
+### 17.4 从 mp4 元数据恢复 prompt/参数（绕过 history 清空）
+- SaveVideo 把提交图写进 mp4 的 `udta/meta` → `prompt`(JSON)。`/h3/files` 用 **pyav(`import av`,venv 18.1.0)读 `container.metadata['prompt']`** 恢复每个视频的 prompt/steps/sec/res,并只列本页生成的 `web_*.mp4`(剔除 `MiniMax_H3_*` 基准)。
+- `/h3/meta`(POST)存 `{filename:{prompt,steps,sec,res,dur}}` 到 `output/webmeta.json`;`dur`(生成耗时)仅对**页面观察过的新任务**有;旧文件只显示「制作于<时间>」——生成耗时未写进文件,history 又重启即清,无法回补。
+
+### 17.5 意外:SSH 隧道掉线 → 502 恢复
+- 现象:外网 `https://video.geekq.xyz:552` 全部 **502 Bad Gateway**。
+- 根因:SSH 反向隧道进程为 0(本地 ComfyUI 正常,但 Caddy 反代经隧道到本地;隧道没了→RST/502)。
+- 处理:重建 `-R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150` → 恢复 200。
+- 持久化:登录计划任务 `ComfyUI Cloud Tunnel` 确认跑 `start-comfyui-cloud.bat`(登录时启 ComfyUI+隧道循环);但它是**一次性登录任务**,运行中再掉线不自动拉,需重登或手动。
+
+### 17.6 技术判读留档
+- 客户端浏览器解析 mp4 元数据不可靠(拉整文件超时)→ 用服务端 pyav 读取。
+- 生成耗时(用时)对旧文件不可回补:ComfyUI 只把 prompt 图写入 mp4,不写 start/end 时间;history 又一重启即清。
+
+### 17.7 文件
+- 自定义节点 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/{__init__.py,web/index.html}`(gitignored,ComfyUI 实例不入库)。
+- 云端 `/etc/caddy/Caddyfile` + 备份若干;记忆 `public-url-map-video-comfyui.md`。
+
 
