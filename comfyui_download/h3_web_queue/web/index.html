@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MiniMax H3 · Video Queue</title>
+<style>
+  :root{
+    --bg:#0d1017; --panel:#141924; --line:#232b3a; --text:#e7ecf3; --dim:#9aa6bb;
+    --acc:#4f8cff; --acc2:#2f6ce0; --ok:#3ecf8e; --err:#ff5c5c; --warn:#f5b942;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:radial-gradient(1200px 800px at 70% -10%,#17203a 0,var(--bg) 55%);
+    color:var(--text);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+    display:flex;
+    padding:24px;
+  }
+  .card{
+    width:min(680px,100%);
+    margin:auto; /* 居中;内容高于视口时自动顶对齐,避免 flex 居中裁掉顶部 */
+    background:linear-gradient(180deg,#161c29,#11151f);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:26px 26px 22px;
+    box-shadow:0 24px 70px rgba(0,0,0,.45);
+  }
+  h1{font-size:18px;margin:0 0 2px;letter-spacing:.3px}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 18px}
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 7px}
+  textarea{
+    width:100%;min-height:96px;resize:vertical;
+    background:#0c1018;color:var(--text);
+    border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;font-size:15px;line-height:1.5;
+    outline:none;transition:border-color .15s,box-shadow .15s;
+  }
+  textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(79,140,255,.15)}
+  .row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+  button{
+    appearance:none;border:none;cursor:pointer;
+    background:linear-gradient(180deg,var(--acc),var(--acc2));
+    color:#fff;font-weight:650;font-size:15px;
+    padding:11px 22px;border-radius:10px;
+    transition:filter .12s,transform .05s;
+  }
+  button:hover{filter:brightness(1.08)}
+  button:active{transform:translateY(1px)}
+  button:disabled{filter:grayscale(.7) brightness(.6);cursor:not-allowed}
+  .toggle{display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer;user-select:none;font-size:14px;color:var(--text)}
+  .toggle input{position:absolute;opacity:0;width:0;height:0}
+  .switch{display:inline-block;width:40px;height:22px;background:#0c1018;border:1px solid var(--line);border-radius:999px;position:relative;flex:none;transition:background .15s,border-color .15s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dim);transition:transform .15s,background .15s}
+  .toggle input:checked + .switch{background:var(--acc);border-color:var(--acc)}
+  .toggle input:checked + .switch::after{transform:translateX(18px);background:#fff}
+  details{margin-left:0;font-size:13px;color:var(--dim);margin-top:8px}
+  details summary{cursor:pointer;user-select:none}
+  .adv{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+  .adv label{margin-bottom:4px}
+  .adv input,.adv select{
+    width:100%;background:#0c1018;color:var(--text);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;outline:none;
+  }
+  .adv input:focus,.adv select:focus{border-color:var(--acc)}
+  #status{margin-top:16px;font-size:14px}
+  .spinner{
+    display:inline-block;width:14px;height:14px;border:2px solid var(--line);
+    border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;
+    vertical-align:-2px;margin-right:8px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .badge{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);margin-right:8px}
+  .badge.running{color:var(--acc);border-color:rgba(79,140,255,.4)}
+  .badge.queued{color:var(--warn);border-color:rgba(245,185,66,.4)}
+  .badge.done{color:var(--ok);border-color:rgba(62,207,142,.4)}
+  .badge.err{color:var(--err);border-color:rgba(255,92,92,.4)}
+  #result{margin-top:16px;display:none}
+  #result.visible{display:block}
+  video{width:100%;border-radius:12px;border:1px solid var(--line);background:#000;display:block}
+  .dl{
+    display:flex;align-items:center;gap:10px;margin-top:12px;
+    padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#0c1018;
+  }
+  .dl .fname{flex:1;min-width:0;font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dl a{
+    color:#fff;text-decoration:none;font-weight:650;white-space:nowrap;
+    background:linear-gradient(180deg,var(--acc),var(--acc2));
+    padding:8px 16px;border-radius:8px;font-size:14px;
+  }
+  .dl a:hover{filter:brightness(1.08)}
+  #err{margin-top:14px;color:var(--err);font-size:13px;display:none;white-space:pre-wrap}
+  .muted{color:var(--dim);font-size:12px;margin-top:4px}
+  #queue-panel{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+  #queue-panel h2{font-size:13px;margin:0 0 10px;color:var(--dim);letter-spacing:.02em;font-weight:600}
+  .qhead{font-size:14px;color:var(--acc);margin-bottom:8px}
+  .qempty{font-size:13px;color:var(--dim);padding:8px 0}
+  .qitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#0c1018;margin-bottom:6px;font-size:13px}
+  .qitem.running{border-color:rgba(79,140,255,.45)}
+  .qitem.queued{border-color:rgba(245,185,66,.45)}
+  .qitem.done{border-color:rgba(62,207,142,.4)}
+  .qitem.err{border-color:rgba(255,92,92,.4)}
+  .qitem{position:relative}
+  .qtop{display:flex;align-items:center;gap:10px}
+  .qmeta{flex:1;min-width:0}
+  .qname{display:block;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qparams{font-size:11px;color:var(--dim);white-space:nowrap}
+  .qtime{flex:none;font-size:12px;color:var(--acc);white-space:nowrap}
+  .qbar{height:6px;border-radius:999px;background:#0c1018;border:1px solid var(--line);margin-top:6px;overflow:hidden}
+  .qbar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));width:0;transition:width .4s}
+  .qdetail{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px;color:var(--dim)}
+  .qitem.open .qdetail{display:block}
+  .qitem.clickable{cursor:pointer}
+  .qdetail .full{padding:4px 0;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:150px;overflow:auto}
+  .qsep{margin:14px 0 8px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+  .qstate{flex:none;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+
+  /* 手机端自适应:窄屏下卡片全宽、间距缩小、行内容可换行不挤压 */
+  @media (max-width: 640px){
+    body{padding:12px}
+    .card{padding:18px 16px;border-radius:12px}
+    h1{font-size:16px;margin-bottom:2px}
+    .sub{font-size:12px;margin-bottom:14px}
+    textarea{min-height:84px;font-size:14px;padding:10px 12px}
+    button{padding:11px 18px;font-size:14px}
+    .qitem{padding:8px 9px;margin-bottom:6px}
+    .qtop{flex-wrap:wrap;row-gap:4px}
+    .qname{font-size:12px}
+    .qparams{font-size:10px}
+    .qstate{font-size:11px;padding:2px 7px}
+    .qtime{font-size:11px}
+    .qprev,.qdl{font-size:11px;margin-right:6px}
+    .qdetail{font-size:11px}
+    .qbar{height:5px}
+  }
+  .qitem.running .qstate{color:var(--acc);border-color:rgba(79,140,255,.4)}
+  .qitem.queued .qstate{color:var(--warn);border-color:rgba(245,185,66,.4)}
+  .qitem.done .qstate{color:var(--ok);border-color:rgba(62,207,142,.4)}
+  .qitem.err .qstate{color:var(--err);border-color:rgba(255,92,92,.4)}
+  .qprompt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .qid{flex:none;color:var(--dim);font-size:11px;font-family:monospace}
+  .qdl{flex:none;color:var(--acc);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;margin-right:10px}
+  .qdl:hover{text-decoration:underline}
+  .qprev{flex:none;color:var(--dim);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;margin-right:10px}
+  .qprev:hover{color:var(--acc);text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>MiniMax H3 · Video Queue</h1>
+  <p class="sub">输入一段视频灵感,提交到生产
+     <span class="muted">NVFP4&nbsp;+&nbsp;SolAttn&nbsp;+&nbsp;EasyCache</span> ComfyUI 栈,完成后可下载。</p>
+
+  <label for="prompt">视频灵感</label>
+  <textarea id="prompt" placeholder="例如:一只金毛幼犬在金色时刻的阳光下穿过公园,镜头平滑跟随,温暖的自然光线,浅景深,轻柔的环境音"></textarea>
+
+  <label class="toggle" for="deepseek">
+    <input type="checkbox" id="deepseek" checked />
+    <span class="switch"></span>
+    <span>使用 DeepSeek 改写提示词</span>
+  </label>
+  <p class="muted">开启:先由 DeepSeek 按 H3 prompt 规范改写你的灵感,再送去生成;关闭:直接把文字当作完整 prompt 送入。</p>
+
+  <details>
+    <summary>高级设置</summary>
+    <div class="adv">
+      <div><label for="seconds">时长 (秒, 5-8)</label><input id="seconds" type="number" min="5" max="8" step="1" value="5" /></div>
+      <div><label for="steps">采样步数(≥10)</label><input id="steps" type="number" min="10" step="1" /></div>
+      <div><label for="seed">Seed</label><input id="seed" type="number" step="1" /></div>
+      <div><label for="mode">DeepSeek 模式</label><select id="mode"></select></div>
+      <div><label for="res">分辨率</label><select id="res"><option value="480p">480p (864×480)</option><option value="720p">720p (1280×720)</option></select></div>
+    </div>
+  </details>
+
+  <div class="row">
+    <button id="go" type="button">生成视频</button>
+    <span class="muted" id="hint"></span>
+  </div>
+
+  <div id="status"></div>
+  <div id="err"></div>
+
+  <div id="result">
+    <video id="preview" controls autoplay muted playsinline></video>
+    <div class="dl">
+      <span class="fname" id="fname"></span>
+      <a id="download" href="#" download>下载视频</a>
+    </div>
+  </div>
+
+  <div id="queue-panel">
+    <h2>任务</h2>
+    <div id="qhead" class="qhead"></div>
+    <div id="tlist"></div>
+  </div>
+</div>
+
+<script type="application/json" id="wf">__H3_WORKFLOW_JSON__</script>
+<script>
+(function(){
+  "use strict";
+  var CLIENT_ID = "h3-web-" + Math.random().toString(36).slice(2, 10);
+  var wf = JSON.parse(document.getElementById("wf").textContent);
+  var template = wf.prompt || wf; // template is {prompt:{...}} but tolerate bare graph
+  var $ = function(id){ return document.getElementById(id); };
+  var go = $("go"), statusEl = $("status"), errEl = $("err"),
+      resultEl = $("result"), preview = $("preview"),
+      fnameEl = $("fname"), downloadEl = $("download");
+
+  // Find a node of a given class within a (possibly cloned) graph.
+  function findIn(graph, cls){ for (var id in graph){ if (graph[id].class_type === cls) return graph[id]; } return null; }
+
+  // MiniMax H3 snaps its frame count to the model's 17k+5 grid at 24fps
+  // (124 = ~5s, 192 = ~8s). Map a desired duration (seconds) to the nearest
+  // valid frame count so <seconds> selects a watchable 5-8s clip.
+  function framesForSeconds(sec){
+    var target = (sec || 5) * 24;
+    var best = 124, bestDiff = 1e9;
+    for (var k = 0; k <= 30; k++){
+      var f = 17 * k + 5;
+      var d = Math.abs(f - target);
+      if (d < bestDiff){ bestDiff = d; best = f; }
+    }
+    return best;
+  }
+
+  // Defaults straight from the template.
+  var cond = findIn(template, "MiniMaxH3ImageToVideo");
+  var noise = findIn(template, "RandomNoise");
+  var sigmas = findIn(template, "BasicScheduler");
+  if (cond && cond.inputs && cond.inputs.length) $("seconds").value = Math.round(cond.inputs.length / 24);
+  if (noise && noise.inputs && noise.inputs.noise_seed != null) $("seed").value = noise.inputs.noise_seed;
+  if (sigmas && sigmas.inputs && sigmas.inputs.steps) $("steps").value = sigmas.inputs.steps;
+
+  // DeepSeek modes for the H3DeepSeekPrompt node.
+  var MODES = ["T2VA", "I2VA", "FL2VA", "L2VA", "Ref2VA"];
+  var modeSel = $("mode");
+  MODES.forEach(function(m){ var o=document.createElement("option"); o.value=m; o.textContent=m; modeSel.appendChild(o); });
+  modeSel.value = "T2VA";
+
+  // Resolution presets: 480p (default, proven on this GPU) vs 720p.
+  var resSel = $("res");
+  resSel.value = (cond && cond.inputs && cond.inputs.width === 1280) ? "720p" : "480p";
+
+  function api(path, opts){
+    return fetch(path, opts).then(function(r){
+      if (!r.ok){ return r.text().then(function(t){ throw new Error("HTTP " + r.status + ": " + t.slice(0,300)); }); }
+      return r.json();
+    });
+  }
+  function esc(s){ var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+  function snip(s, n){ s=(s||'').trim(); return s.length>n ? s.slice(0,n)+'…' : s; }   // 摘要:取前 n 字
+  function setStatus(html){ statusEl.innerHTML = html; }
+
+  function showError(msg){
+    errEl.style.display = "block";
+    errEl.textContent = "错误: " + msg;
+    setStatus('<span class="badge err">failed</span>');
+  }
+
+  function parseOutputVideo(outputs){
+    for (var nodeId in outputs){
+      var out = outputs[nodeId];
+      for (var k in out){
+        if (k !== "video" && k !== "gifs" && k !== "images") continue;
+        var v = out[k];
+        if (Array.isArray(v)){ for (var i=0;i<v.length;i++){ if (v[i] && v[i].filename) return v[i]; } }
+        else if (v && v.filename) return v;
+      }
+    }
+    return null;
+  }
+
+  function viewUrl(item){
+    var q = new URLSearchParams({filename: item.filename, type: item.type || "output"});
+    if (item.subfolder) q.set("subfolder", item.subfolder);
+    return "/view?" + q.toString();
+  }
+  // 服务端强制 attachment 下载(兼容 iOS/mobile Safari 下载管理器)
+  function downloadUrl(item){
+    var q = new URLSearchParams({filename: item.filename, type: item.type || "output"});
+    if (item.subfolder) q.set("subfolder", item.subfolder);
+    return "/h3/download?" + q.toString();
+  }
+
+  // ComfyUI /view 的 Content-Disposition 是裸 filename(视为 inline),浏览器会播放
+  // 而不是保存。改用 fetch 取字节 -> blob 对象 URL -> 强制下载(blob 无服务器响应头)。
+  function downloadFile(url, filename){
+    fetch(url).then(function(r){
+      if (!r.ok){ throw new Error("HTTP " + r.status); }
+      return r.blob();
+    }).then(function(blob){
+      var a = document.createElement("a");
+      var obj = URL.createObjectURL(blob);
+      a.href = obj;
+      a.download = filename || "video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(obj); }, 3000);
+    }).catch(function(e){ showError("下载失败: " + (e.message || e)); });
+  }
+
+  var active = false;
+  function busy(on){
+    active = on;
+    go.disabled = on || !$("prompt").value.trim();
+    go.textContent = on ? "生成中…" : "生成视频";
+  }
+  $("prompt").addEventListener("input", function(){ go.disabled = active || !$("prompt").value.trim(); });
+
+  go.addEventListener("click", function(){
+    var text = $("prompt").value.trim();
+    if (!text || active){ return; }
+    errEl.style.display = "none";
+    resultEl.classList.remove("visible");
+    var jobId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    var started = Date.now();
+    busy(true);
+
+    // Clone the template so repeated submissions don't pollute each other.
+    var graph = JSON.parse(JSON.stringify(template));
+    var cCond = findIn(graph, "MiniMaxH3ImageToVideo");
+    var cNoise = findIn(graph, "RandomNoise");
+    var cSigmas = findIn(graph, "BasicScheduler");
+    var cSave = findIn(graph, "SaveVideo");
+
+    var useDeepseek = $("deepseek").checked;
+    var modeVal = $("mode").value || "T2VA";
+
+    if (cCond && cCond.inputs){
+      delete graph.h3ds;
+      if (useDeepseek){
+        // Feed the raw idea to H3DeepSeekPrompt; its output drives the H3 prompt.
+        graph.h3ds = {"class_type": "H3DeepSeekPrompt", "inputs": {"user_text": text, "mode": modeVal}};
+        cCond.inputs.prompt = ["h3ds", 0];
+      } else {
+        cCond.inputs.prompt = text;
+      }
+    }
+    if (cCond && cCond.inputs){
+      var r = $("res").value || "480p";
+      var dims = r === "720p" ? {w:1280, h:720} : {w:864, h:480};
+      cCond.inputs.width = dims.w;
+      cCond.inputs.height = dims.h;
+      cCond.inputs.length = framesForSeconds(parseInt($("seconds").value,10) || 5);
+    }
+    if (cNoise && cNoise.inputs && $("seed").value){ cNoise.inputs.noise_seed = parseInt($("seed").value,10) || 0; }
+    if (cSigmas && cSigmas.inputs){
+      var sSteps = parseInt($("steps").value,10);
+      // 最少 10 步,否则画面不可看
+      cSigmas.inputs.steps = (sSteps && sSteps >= 10) ? sSteps : 10;
+    }
+    if (cSave && cSave.inputs){ cSave.inputs.filename_prefix = "video/web_" + jobId; }
+
+    var pollTimer = null;
+    setStatus('<span class="spinner"></span>提交中…');
+    api("/prompt", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({prompt: graph, client_id: CLIENT_ID})
+    }).then(function(res){
+      if (res.node_errors && Object.keys(res.node_errors).length){
+        throw new Error("节点校验错误: " + JSON.stringify(res.node_errors));
+      }
+      var pid = res.prompt_id;
+      // 记录本次任务的元数据,跑完后回写到 /h3/meta(供 /h3/files 展示 prompt/参数/制作耗时)
+      pendingMeta[pid] = { jobId: jobId, prompt: text,
+        steps: cSigmas ? cSigmas.inputs.steps : null,
+        sec: parseInt($("seconds").value,10) || 5,
+        res: cCond ? (cCond.inputs.width+'×'+cCond.inputs.height) : '' };
+      setStatus('<span class="badge queued">已排队</span><span class="spinner"></span>' + esc(pid) + " — 等待开始…");
+      pollTimer = setInterval(function(){ poll(pid, started); }, 4000);
+      poll(pid, started);
+    }).catch(function(e){ busy(false); showError(e.message || String(e)); });
+  });
+
+  function poll(pid, started){
+    api("/queue").then(function(q){
+      var running = (q.queue_running || []), pending = (q.queue_pending || []);
+      var inPending = -1;
+      for (var i=0;i<pending.length;i++){ if (pending[i][1] === pid){ inPending = i; break; } }
+      var isRunning = false;
+      for (var j=0;j<running.length;j++){ if (running[j][1] === pid){ isRunning = true; break; } }
+      var sec = Math.floor((Date.now()-started)/1000);
+      var mm = Math.floor(sec/60), ss = ("0"+(sec%60)).slice(-2);
+      if (isRunning){
+        setStatus('<span class="badge running">运行中</span>' + esc(pid) + " · " + mm + ":" + ss);
+      } else if (inPending >= 0){
+        setStatus('<span class="badge queued">已排队</span>' + esc(pid) + " · 位置 " + (inPending+1) + " / " + pending.length + " · " + mm + ":" + ss);
+      }
+    }).catch(function(){});
+
+    api("/history/" + pid).then(function(h){
+      if (!h || !h[pid]){ return; }
+      clearInterval(pollTimer);
+      var rec = h[pid];
+      var status = rec.status || {};
+      var str = status.status_str;
+      if (str === "error"){
+        var msg = "";
+        (status.messages || []).forEach(function(m){ msg += (m[1] && m[1].message ? m[1].message : String(m[1])) + "\n"; });
+        busy(false);
+        showError(msg.trim() || "生成失败(未知错误)。");
+        return;
+      }
+      if (str !== "success" && !str){ return; }
+      var item = parseOutputVideo(rec.outputs || {});
+      if (!item){
+        busy(false);
+        showError("已完成但历史里没有找到视频输出。");
+        return;
+      }
+      preview.src = viewUrl(item);                       // 预览: /view 流式播放
+      fnameEl.textContent = item.filename + (item.subfolder ? " · " + item.subfolder : "");
+      downloadEl.href = downloadUrl(item);               // 下载: /h3/download, attachment 强制保存
+      downloadEl.setAttribute("download", item.filename);
+      resultEl.classList.add("visible");
+      var sec = Math.floor((Date.now()-started)/1000);
+      var mm = Math.floor(sec/60), ss = ("0"+(sec%60)).slice(-2);
+      setStatus('<span class="badge done">完成</span>' + esc(pid) + " · " + mm + ":" + ss);
+      busy(false);
+    }).catch(function(e){});
+  }
+
+  // ---- 全局任务:每条带 prompt/参数,新版在前,点击展开看消耗/预计 ----
+  var qhead = $("qhead"), tlist = $("tlist");
+  var tasks = {};        // pid -> task meta (persisted to localStorage)
+  var openPids = {};     // pid -> expanded
+  var pendingMeta = {};  // pid -> {jobId,prompt,steps,sec,res} 待回写 /h3/meta
+  var WS_PROGRESS = null;
+
+  function loadTasks(){ try { tasks = JSON.parse(localStorage.getItem('h3tasks')||'{}'); } catch(e){ tasks={}; } }
+  function saveTasks(){
+    var slim = {};
+    for (var pid in tasks){ var t=tasks[pid]; slim[pid]={prompt:t.prompt, steps:t.steps, length:t.length, res:t.res, createTime:t.createTime, startReal:t.startReal, finished:t.finished}; }
+    try { localStorage.setItem('h3tasks', JSON.stringify(slim)); } catch(e){}
+  }
+  loadTasks();
+
+  function shortId(id){ return (id||'').slice(0,8); }
+  function fmt(sec){ sec=Math.max(0, Math.floor(sec||0)); var m=Math.floor(sec/60), s=sec%60; return m+':'+('0'+s).slice(-2); }
+  function graphParams(graph){
+    var g = graph||{}, c=(g.cond&&g.cond.inputs)||{}, s=(g.sigmas&&g.sigmas.inputs)||{}, h=(g.h3ds&&g.h3ds.inputs)||{};
+    var len = c.length, sec = len ? Math.round(len/24) : null;   // 24fps -> 视频秒数
+    return { prompt: h.user_text || (typeof c.prompt==='string' ? c.prompt : '(未命名)'),
+             steps: s.steps, length: len, sec: sec, res: (c.width||0)+'×'+(c.height||0) };
+  }
+  function paramOf(item){ return graphParams(item[2]||{}); }
+  // 从历史 status.messages 拿真实执行起止时间戳
+  function historyTimings(rec){
+    var start=null, end=null;
+    ((rec.status||{}).messages||[]).forEach(function(m){
+      var ty=m[0], d=m[1]||{};
+      if (ty==='execution_start') start=d.timestamp;
+      if (ty==='execution_success'||ty==='execution_error'||ty==='execution_interrupted') end=d.timestamp;
+    });
+    return {start:start, end:end};
+  }
+
+  // WebSocket /ws: 真实采样步进(用于预计剩余)
+  function connectWS(){
+    var proto = location.protocol==='https:' ? 'wss://' : 'ws://';
+    var ws = new WebSocket(proto + location.host + '/ws');
+    ws.onmessage = function(ev){
+      var m; try { m = JSON.parse(ev.data); } catch(e){ return; }
+      if (m && m.type==='progress' && m.data && m.data.prompt_id){
+        var pid = m.data.prompt_id;
+        WS_PROGRESS = {pid:pid, value:m.data.value, max:m.data.max, at:Date.now()};
+        var t = tasks[pid] || (tasks[pid]={});
+        t.value = m.data.value; t.max = m.data.max; t.lastProgress = Date.now();
+        if (!t.startTs && !t.createTime) t.startTs = Date.now();
+      } else if (m && (m.type==='executed'||m.type==='execution_success') && m.data && m.data.prompt_id){
+        var p2 = m.data.prompt_id; if (tasks[p2]) tasks[p2].finished = Date.now();
+      }
+    };
+    ws.onclose = function(){ setTimeout(connectWS, 2000); };
+  }
+
+  function elapsedOf(t, now){
+    if (t.createTime) return (now - t.createTime)/1000;
+    if (t.startTs) return (now - t.startTs)/1000;
+    return null;
+  }
+  function estRemain(t, now){
+    var el = elapsedOf(t, now);
+    if (!el || !t.value || !t.max) return null;
+    var frac = Math.min(1, t.value/t.max);
+    if (frac <= 0.01) return null;
+    return (el/frac) - el;   // 用真实进度外推总时长
+  }
+  function doneElapsed(t){
+    if (t.startReal && t.finished) return (t.finished - t.startReal)/1000;
+    if (t.createTime && t.finished) return (t.finished - t.createTime)/1000;
+    if (t.startTs && t.finished) return (t.finished - t.startTs)/1000;
+    return null;
+  }
+
+  function taskRow(item){
+    var pid = item[1], p = paramOf(item);
+    var t = tasks[pid] || (tasks[pid] = {});
+    t.prompt = p.prompt; t.steps = p.steps; t.length = p.length; t.res = p.res;
+    var now = Date.now();
+    var el = elapsedOf(t, now), rem = estRemain(t, now);
+    var bar = (t.value && t.max) ? (t.value/t.max*100) : 0;
+    var timeTxt = el!=null ? ('已用 '+fmt(el)) : '';
+    if (rem!=null) timeTxt += ' · 预计剩余 ~'+fmt(rem);
+    return '<div class="qitem running clickable'+(openPids[pid]?' open':'')+'" data-pid="'+pid+'">' +
+      '<div class="qtop">' +
+        '<span class="qstate">运行中</span>' +
+        '<span class="qmeta"><span class="qname">'+esc(snip(p.prompt,5))+'</span>' +
+          '<span class="qparams">'+esc(p.res||'')+(p.sec?' · ≈'+p.sec+'s':'')+(p.steps?' · '+p.steps+'步':'')+'</span></span>' +
+        '<span class="qtime" data-pid="'+pid+'">'+timeTxt+'</span>' +
+      '</div>' +
+      '<div class="qbar"><i style="width:'+bar.toFixed(1)+'%"></i></div>' +
+      '<div class="qdetail"><span class="qid">'+esc(shortId(pid))+'</span></div>' +
+    '</div>';
+  }
+  function doneRow(t, pid){
+    var el = doneElapsed(t);
+    var timeTxt = el!=null ? ('耗时 '+fmt(el)) : '';
+    var out = t.output;
+    return '<div class="qitem '+(t.status==='error'?'err':'done')+' clickable'+(openPids[pid]?' open':'')+'" data-pid="'+pid+'">' +
+      '<div class="qtop">' +
+        '<span class="qstate">'+(t.status==='error'?'失败':'完成')+'</span>' +
+        '<span class="qmeta"><span class="qname">'+esc(snip(t.prompt || (out?out.filename:'—'), 5))+'</span>' +
+          '<span class="qparams">'+esc(t.res||'')+(t.sec?' · ≈'+t.sec+'s':'')+(t.steps?' · '+t.steps+'步':'')+'</span></span>' +
+        '<span class="qtime">'+timeTxt+'</span>' +
+      '</div>' +
+      '<div class="qdetail">' +
+        (t.prompt ? '<div class="full">'+esc(t.prompt)+'</div>' : '') +
+        '<div class="qid">'+esc(shortId(pid))+'</div>' +
+        (out ?
+          '<a class="qprev" target="_blank" href="'+viewUrl(out)+'" title="在浏览器里播放">预览</a>' +
+          '<a class="qdl" href="'+downloadUrl(out)+'">下载</a>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function fmtSize(n){ if(n>=1048576) return (n/1048576).toFixed(1)+'MB'; if(n>=1024) return (n/1024).toFixed(0)+'KB'; return (n||0)+'B'; }
+  function fmtMtime(ms){
+    if(!ms) return '';
+    var d=new Date(ms), p=function(n){ return ('0'+n).slice(-2); };
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+  }
+  function fileRow(f){
+    var m = f.meta || {};
+    var nameLine = m.prompt ? snip(m.prompt, 5) : f.filename;
+    var params = [];
+    if (m.res) params.push(m.res);
+    if (m.sec) params.push('≈'+m.sec+'s');
+    if (m.steps) params.push(m.steps+'步');
+    params.push(fmtSize(f.size));
+    var timeTxt = m.dur ? ('耗时 '+fmt(m.dur)) : ('制作于 '+fmtMtime(f.mtime_ms));
+    return '<div class="qitem done clickable" data-pid="'+esc(f.filename)+'">' +
+      '<div class="qtop">' +
+        '<span class="qstate">视频</span>' +
+        '<span class="qmeta"><span class="qname">'+esc(nameLine)+'</span>' +
+          '<span class="qparams">'+esc(params.join(' · '))+'</span></span>' +
+        '<span class="qtime">'+timeTxt+'</span>' +
+      '</div>' +
+      '<div class="qdetail">' +
+        '<div class="full">'+esc(f.subfolder ? (f.subfolder+'/'+f.filename) : f.filename)+(m.prompt ? ('\n\n'+m.prompt) : '')+'</div>' +
+        '<span class="qid">'+fmtMtime(f.mtime_ms)+'</span>' +
+        '<a class="qprev" target="_blank" href="'+viewUrl(f)+'">预览</a>' +
+        '<a class="qdl" href="'+downloadUrl(f)+'">下载</a>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderTasks(){
+    Promise.all([api('/queue'), api('/h3/files')]).then(function(res){
+      var q=res[0], files=res[1]||[], now=Date.now();
+      var running=q.queue_running||[], pending=q.queue_pending||[];
+      window.__queueCount = running.length + pending.length;
+      qhead.textContent = '运行中 '+running.length+' · 排队 '+pending.length+' · 共 '+window.__queueCount+' 个任务 · 视频 '+files.length+' 个';
+      var html='';
+      running.forEach(function(it){
+        var pid=it[1], t=tasks[pid]||(tasks[pid]={});
+        var p=paramOf(it); t.prompt=p.prompt; t.steps=p.steps; t.length=p.length; t.sec=p.sec; t.res=p.res;
+        t.createTime=(it[3]||{}).create_time; t.isRunning=true;
+        html += taskRow(it);
+      });
+      pending.forEach(function(it, idx){
+        var pid=it[1], t=tasks[pid]||(tasks[pid]={});
+        var p=paramOf(it); t.prompt=p.prompt; t.steps=p.steps; t.length=p.length; t.sec=p.sec; t.res=p.res;
+        t.createTime=(it[3]||{}).create_time; t.isRunning=false; t.pending=true;
+        var el=elapsedOf(t, now);
+        html += '<div class="qitem queued" data-pid="'+pid+'"><div class="qtop">' +
+          '<span class="qstate">排队 第'+(idx+1)+' 位</span>' +
+          '<span class="qmeta"><span class="qname">'+esc(snip(t.prompt,5))+'</span>' +
+          '<span class="qparams">'+esc(t.res||'')+(t.sec?' · ≈'+t.sec+'s':'')+(t.steps?' · '+t.steps+'步':'')+'</span></span>' +
+          '<span class="qtime">'+(el!=null?('已等 '+fmt(el)):'')+'</span></div></div>';
+      });
+      // 本页提交的任务跑完后,把 prompt/参数/制作耗时回写到 /h3/meta(文件名的计数固定 00001_)
+      var queuedPids = {};
+      running.forEach(function(it){ queuedPids[it[1]] = true; });
+      pending.forEach(function(it){ queuedPids[it[1]] = true; });
+      for (var pid in pendingMeta){
+        if (queuedPids[pid]) continue;                    // 还在排/跑,等它完成
+        var pm = pendingMeta[pid];
+        var tm = tasks[pid] || {};
+        var dur = tm.createTime ? Math.floor((now - tm.createTime)/1000)
+                : tm.startTs ? Math.floor((now - tm.startTs)/1000) : null;
+        var fn = 'web_' + pm.jobId + '_00001_.mp4';
+        var meta = { filename: fn, prompt: pm.prompt, steps: pm.steps, sec: pm.sec, res: pm.res };
+        if (dur != null) meta.dur = dur;
+        api('/h3/meta', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(meta)}).catch(function(){});
+        delete pendingMeta[pid];
+      }
+      // 视频列表来自磁盘(/h3/files),跨重启持久;最新在前
+      var filesHtml='';
+      files.forEach(function(f){ filesHtml += fileRow(f); });
+      if (running.length===0 && pending.length===0 && filesHtml==='') html = '<div class="qempty">空闲</div>';
+      else if (filesHtml) html += '<div class="qsep">视频(磁盘)</div>' + filesHtml;
+      tlist.innerHTML = html;
+      tlist.querySelectorAll('.qitem').forEach(function(el){
+        var pid=el.getAttribute('data-pid');
+        if (openPids[pid]) el.classList.add('open');
+      });
+      saveTasks();
+    }).catch(function(){});
+  }
+
+  // 每秒平滑刷新已用/预计/进度条(不整页重渲染)
+  function tick(){
+    var now=Date.now();
+    tlist.querySelectorAll('.qtime[data-pid]').forEach(function(el){
+      var pid=el.getAttribute('data-pid'); var t=tasks[pid]; if(!t) return;
+      var e2=elapsedOf(t, now), rem=estRemain(t, now);
+      var txt='';
+      if (e2!=null) txt='已用 '+fmt(e2)+(t.isRunning?'':'');
+      if (rem!=null) txt += ' · 预计剩余 ~'+fmt(rem);
+      el.textContent = txt;
+    });
+    tlist.querySelectorAll('.qbar i').forEach(function(bar){
+      var el=bar.closest('.qitem'); var pid=el && el.getAttribute('data-pid'); var t=tasks[pid];
+      if (t && t.value && t.max) bar.style.width = (t.value/t.max*100).toFixed(1)+'%';
+    });
+  }
+
+  tlist.addEventListener('click', function(ev){
+    // .qdl(下载,指向 /h3/download,Content-Disposition: attachment)与
+    // .qprev(预览,新标签播放)均保持浏览器默认行为;其余点击展开/收起
+    var el = ev.target.closest('.qitem'); if (!el) return;
+    var pid = el.getAttribute('data-pid');
+    openPids[pid] = !openPids[pid];
+    el.classList.toggle('open', !!openPids[pid]);
+  });
+
+  renderTasks(); connectWS();
+  setInterval(renderTasks, 5000);
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
