@@ -1,14 +1,18 @@
-"""Serve a minimal single-input H3 video queue page over the existing ComfyUI server.
+"""Serve the H3 text, reference-image and keyframe video queue page.
 
 Registers GET /h3 on the running PromptServer so the same port/domain used for
 ComfyUI also serves a small HTML frontend. The frontend submits to ComfyUI's own
 POST /prompt, polls GET /history/{prompt_id} and serves the result via GET /view.
 """
 
+import asyncio
 import base64
 import json
+import logging
 import os
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -90,8 +94,15 @@ def _post_deepseek(payload, timeout=180):
         headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
         method="POST",
     )
+    # The official domestic endpoint should not detour through the system proxy.
+    # Custom API endpoints retain their existing proxy configuration.
+    proxy_handler = (urllib.request.ProxyHandler({})
+                     if urllib.parse.urlsplit(base_url).hostname == "api.deepseek.com"
+                     else urllib.request.ProxyHandler())
+    opener = urllib.request.build_opener(proxy_handler)
+    started = time.perf_counter()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
@@ -101,6 +112,7 @@ def _post_deepseek(payload, timeout=180):
     choices = result.get("choices") or []
     if not choices or not choices[0].get("message", {}).get("content"):
         raise RuntimeError("DeepSeek API returned no prompt content")
+    logging.info("H3 DeepSeek %s completed in %.2fs", payload["model"], time.perf_counter() - started)
     return choices[0]["message"]["content"].strip()
 
 
@@ -120,62 +132,79 @@ def _image_mime(raw):
     return None
 
 
-def _describe_image(image_name):
-    """VLM the uploaded reference image -> a text description. Never raises.
+MAX_REFERENCE_IMAGES = 5
+MAX_REFERENCE_BYTES = 32 * 1024 * 1024
 
-    Returns (description_or_None, error_or_None) so the prompt pipeline degrades
-    gracefully if the vision model is unavailable or rejects the request.
-    """
+
+def _describe_image(image_name):
+    """Keep the existing single-image entry point."""
+    return _describe_images([image_name])
+
+
+def _describe_images(image_names):
+    """Describe ordered references in one vision request; keep all labels on failure."""
     input_dir = folder_paths.get_input_directory()
     if not input_dir:
         return None, "no input directory"
-    path = os.path.abspath(os.path.join(input_dir, image_name))
-    if not path.startswith(os.path.abspath(input_dir)) or not os.path.isfile(path):
-        return None, "image not found in input directory"
-    try:
-        with open(path, "rb") as f:
-            raw = f.read()
-    except Exception as exc:
-        return None, "read image failed: " + str(exc)
+    if not 1 <= len(image_names) <= MAX_REFERENCE_IMAGES:
+        return None, "provide 1–5 reference images"
 
-    mime = _image_mime(raw)
-    if not mime:
-        return None, "unsupported image format (must be JPEG/PNG/GIF/WebP)"
-    if len(raw) > 32 * 1024 * 1024:   # inline single-image cap; body limit is 48 MiB
-        return None, "image too large for inline vision (> 32 MiB)"
+    content = [{"type": "text", "text":
+        "Describe each reference image separately in the supplied order. "
+        "Label its paragraph <Picture 1>, <Picture 2>, and so on. "
+        "Keep subjects and visual details associated with the correct image."}]
+    total_bytes = 0
+    try:
+        root = Path(input_dir).resolve()
+        for index, image_name in enumerate(image_names, 1):
+            label = f"<Picture {index}>"
+            relative = Path(image_name)
+            if relative.is_absolute():
+                return None, f"{label}: image must be inside the input directory"
+            path = (root / relative).resolve()
+            if not path.is_relative_to(root) or not path.is_file():
+                return None, f"{label}: image not found in input directory"
+            with open(path, "rb") as f:
+                raw = f.read(MAX_REFERENCE_BYTES - total_bytes + 1)
+            total_bytes += len(raw)
+            if total_bytes > MAX_REFERENCE_BYTES:
+                return None, "reference images exceed the combined 32 MiB vision limit"
+            mime = _image_mime(raw)
+            if not mime:
+                return None, f"{label}: unsupported image format (must be JPEG/PNG/GIF/WebP)"
+            content.append({"type": "text", "text": label})
+            content.append({"type": "image_url", "image_url": {
+                "url": "data:%s;base64,%s" % (mime, base64.b64encode(raw).decode("ascii"))
+            }})
+    except (OSError, ValueError, RuntimeError) as exc:
+        return None, "read reference images failed: " + str(exc)
 
     _load_env(ENV_PATH)
     api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not api_key or api_key == "your_deepseek_api_key_here":
         return None, "set DEEPSEEK_API_KEY"
     model = os.environ.get("DEEPSEEK_VISION_MODEL", DEFAULT_VISION_MODEL).strip() or DEFAULT_VISION_MODEL
-    image_b64 = base64.b64encode(raw).decode("ascii")
-
     system = (
-        "You are a visual analyst for video generation. Look at the supplied reference image and return one "
-        "concise paragraph describing the subject(s), style, palette, lighting, mood, camera framing, and any "
-        "distinct visual identity — exactly what a video-generation prompt needs to keep that look. Do not wrap "
-        "your answer in Markdown fences; if the user's idea is in Chinese, answer in Chinese."
+        "You are a visual analyst for video generation. Return a concise paragraph per supplied image, "
+        "with its exact <Picture N> label, describing visible subjects, style, palette, lighting, framing "
+        "and distinctive visual identity. Do not merge the numbered descriptions, invent unseen details, "
+        "or assume the images are first/last frames or a chronological storyboard. "
+        "Do not wrap your answer in Markdown fences."
     )
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": [
-                # DeepSeek requires the image inside the USER message only; system
-                # carries text. Block order mirrors the doc (text then image_url).
-                {"type": "text", "text": "Describe this reference image so a video prompt can preserve its identity and visual style."},
-                {"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (mime, image_b64)}},
-            ]},
+            {"role": "user", "content": content},
         ],
         "temperature": 0.3,
+        "thinking": {"type": "disabled"},
         "stream": False,
     }
     try:
         return _post_deepseek(payload), None
     except Exception as exc:
         return None, str(exc)
-
 
 routes = PromptServer.instance.routes
 
@@ -353,10 +382,10 @@ async def h3_download(request):
 async def h3_prompt(request):
     """Generate the final H3 prompt for the page.
 
-    (1) If a reference image was uploaded, run the vision model over it to get a
-        description. (2) Feed the user's idea (+ that description) through the
-        local h3-prompt-writing skill via DeepSeek to produce the final Ref2VA /
-        T2VA prompt. Returns it so the page can show it for editing before submit.
+    (1) Describe up to five uploaded images in one ordered vision request.
+        (2) Feed the user's idea (+ those descriptions) through the
+        local h3-prompt-writing skill via DeepSeek in the selected text, reference,
+        or first/last-frame mode. Returns it for editing before submit.
         The vision step degrades gracefully (vlm_error) so a model hiccup never
         blocks prompt generation.
     """
@@ -365,20 +394,73 @@ async def h3_prompt(request):
     except Exception:
         return web.json_response({"error": "invalid JSON body"}, status=400)
 
-    user_text = (body.get("user_text") or "").strip()
-    mode = (body.get("mode") or "T2VA").strip()
+    if not isinstance(body, dict):
+        return web.json_response({"error": "JSON body must be an object"}, status=400)
+    user_text = body.get("user_text") or ""
+    mode = body.get("mode") or "T2VA"
+    if not isinstance(user_text, str) or not isinstance(mode, str):
+        return web.json_response({"error": "user_text and mode must be strings"}, status=400)
+    user_text, mode = user_text.strip(), mode.strip()
     if not user_text:
         return web.json_response({"error": "Enter a video idea"}, status=400)
 
+    if "image_names" in body:
+        image_names = body["image_names"]
+    else:
+        image_name = body.get("image_name") or ""
+        if not isinstance(image_name, str):
+            return web.json_response({"error": "image_name must be a string"}, status=400)
+        image_names = [image_name] if image_name.strip() else []
+    if (not isinstance(image_names, list) or len(image_names) > MAX_REFERENCE_IMAGES
+            or any(not isinstance(name, str) or not name.strip() for name in image_names)):
+        return web.json_response({"error": "参考图片应为最多 5 个非空文件名组成的数组"}, status=400)
+    image_names = [name.strip() for name in image_names]
+    counts = {"T2VA": (0, 0), "Ref2VA": (1, 5), "I2VA": (1, 1), "L2VA": (1, 1), "FL2VA": (2, 2)}
+    if mode not in counts:
+        return web.json_response({"error": "不支持的创作模式，请刷新页面后重试"}, status=400)
+    minimum, maximum = counts[mode]
+    if not minimum <= len(image_names) <= maximum:
+        return web.json_response({"error": f"{mode} 的图片数量不正确：需要 {minimum}–{maximum} 张"}, status=400)
+    frame_count = body.get("frame_count")
+    if frame_count is not None and (type(frame_count) is not int
+            or not 124 <= frame_count <= 362 or frame_count % 17 != 5):
+        return web.json_response({"error": "视频帧数不符合当前 H3 时间网格"}, status=400)
+
     image_description, vlm_error = None, None
-    image_name = (body.get("image_name") or "").strip()
-    if image_name:
-        image_description, vlm_error = _describe_image(image_name)
+    if len(image_names) == 1:
+        image_description, vlm_error = await asyncio.to_thread(_describe_image, image_names[0])
+    elif image_names:
+        image_description, vlm_error = await asyncio.to_thread(_describe_images, image_names)
 
     skill = _skill_prompt()
     idea = user_text
+    if frame_count is not None:
+        idea += (f"\n\nThe generated clip has {frame_count} frames at 24 fps, "
+                 f"duration {frame_count / 24:.3f} seconds. The last frame is at "
+                 f"{(frame_count - 1) / 24:.3f} seconds; use that timestamp for a supplied last-frame anchor.")
+    if image_names:
+        labels = ", ".join(f"<Picture {index}>" for index in range(1, len(image_names) + 1))
+        idea += (
+            f"\n\nThere are exactly {len(image_names)} supplied images, in this order: {labels}. "
+            "The user's 图1 / 图片1 refers to <Picture 1>, and subsequent numbers follow the same order. "
+            "Preserve this mapping. Do not introduce unprovided image, video, or audio assets."
+        )
+        if mode == "Ref2VA":
+            idea += " These are visual references, not automatically first/last frames. Use the six Ref2VA sections."
+        elif mode == "I2VA":
+            idea += (" <Picture 1> is the FIRST frame at 0.00 seconds. Start from that image, then develop "
+                     "the action forward. Use the I2VA alignment instruction and three core sections.")
+        elif mode == "L2VA":
+            idea += (" <Picture 1> is the LAST frame, not the opening. Infer a compatible starting state "
+                     "and converge to it by the final frame. Use the L2VA alignment instruction and three core sections.")
+        else:
+            idea += (" <Picture 1> is the FIRST frame at 0.00 seconds; <Picture 2> is the LAST frame. "
+                     "Describe a continuous observable path from the first state to the last. "
+                     "Use the FL2VA alignment instruction and three core sections, not Ref2VA subject definitions.")
     if image_description:
-        idea += "\n\nReference image visual description:\n" + image_description
+        idea += "\n\nNumbered reference image descriptions:\n" + image_description
+    elif image_names:
+        idea += "\n\nVisual analysis is unavailable. Use only the user's stated image roles; do not invent image contents."
 
     _load_env(ENV_PATH)
     model = os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
@@ -389,13 +471,15 @@ async def h3_prompt(request):
         f"User idea:\n{idea}"
     )
     try:
-        h3_prompt = _post_deepseek({
+        # urllib is blocking; keep the ComfyUI HTTP/WebSocket loop responsive.
+        h3_prompt = await asyncio.to_thread(_post_deepseek, {
             "model": model,
             "messages": [
                 {"role": "system", "content": skill},
                 {"role": "user", "content": instruction},
             ],
             "temperature": 0.7,
+            "thinking": {"type": "disabled"},
             "stream": False,
         })
     except Exception as exc:

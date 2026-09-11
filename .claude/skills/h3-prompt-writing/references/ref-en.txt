@@ -34,6 +34,8 @@ Full-reference rewrites use four types of labels to identify the source and role
 
 > Once a reference label is assigned to a piece of content, it keeps the same meaning across `subject_definitions`, `summary`, `retention_analysis`, `detailed_description`, and the audio sections.
 
+For the current web reference-image flow, one to five uploaded images map in order to `<Picture 1>` through `<Picture N>`. Keep that supplied numbering even when several pictures define one subject, or a picture supplies only a background. Do not reorder labels by importance, turn them into first/last frames, or create missing video/audio references. Images alone can constitute a Ref2VA request; every reference category need not be present.
+
 `subject_definitions` defines each piece of referenced content that must be tracked separately later, such as a person, an environment, a source video's structure, or an audio track. Give each item its own line and explain what its label denotes, its reference role, and the main features to follow; name the corresponding source asset when its provenance needs to be made explicit. If `<Picture N>` or `<Video N>` only identifies the source of another referenced item and will not be analyzed or used separately later, cite it inside that item's definition without adding a separate line. `retention_analysis` records where each referenced item appears and whether it is fully preserved, partially preserved, transferred, or reused.
 
 ### 2.1 `<Subject N>`
@@ -217,7 +219,9 @@ The basic format follows the Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L
 - Write the body in English. Preserve the original language of dialogue, lyrics, and visible text.
 - `[Shot 1]` marks the opening shot and has no timestamp. Later shots use `[Shot N] At MM:SS.mmm, ...` to mark cut times.
 - Write camera movement as natural English within the current shot, including movement type, amplitude, and speed when they need to be expressed.
+- For timed action and single-take requests, apply Section 7 of `base-en.txt`: beat boundaries are not cuts, and position, facing, travel, prop states, synchronized sounds and the final pose must remain coherent. `action-continuity.md` contains the user's five-second example and its unresolved conflicts; it is not a proven output recipe.
 - Give vocal sources stable `(S1)`, `(S2)`, and subsequent IDs. Write dialogue and lyrics as `<d>[Language] ...</d>`.
+- Preserve user-supplied performance cues and bracketed delivery qualifiers inside that structure; see Section 6 of `base-en.txt` for community speech, singing, crying, and humming cases. These are examples, not a locally verified tag catalog.
 - Use `<scenetrans>`, `<cutoff>`, and the corresponding continuity descriptions for dialogue crossing a cut, speech truncated by the video ending, and continuous audio across shots.
 
 For complete rules and examples covering camera vocabulary, group speech, voice-over, dialogue across cuts, and visible text, see the Video Prompt Writing Guide (T2VA / I2VA / FL2VA / L2VA).
@@ -239,7 +243,7 @@ The target video is in a cinematic, literary music-video style with soft lightin
 [Shot 2] At 00:09.000, the shot cuts to an extreme close-up...
 ```
 
-For generation tasks, `detailed_description` is normally 350-500 English words. Dialogue-dense content prioritizes fitting the complete spoken timeline rather than mechanically reaching a word count. Video-editing descriptions scale with the complexity of the source video and do not have to follow the generation-task range. A single shot does not automatically justify a shorter description; distribute detail across multiple shots according to their information load.
+For generation tasks, `detailed_description` is normally 350-500 English words, but this is not a quota: requested duration and readable action/dialogue pacing take precedence. Do not add events to fill a word count or omit supplied choreography merely to shorten it. Video-editing descriptions scale with the complexity of the source video and do not have to follow the generation-task range. A single shot does not automatically justify a shorter description; distribute detail according to its information load.
 
 ### 5.3 Using Reference Labels in Shots
 
@@ -271,7 +275,7 @@ When verbal content is only a cue within a directly reused BGM or complete sound
 When <Audio 1> reaches the phrase <d>[English] I'm lonely lonely lonely lonely lonely I'm lonely</d>, <Subject 1> performs the corresponding hand gesture without becoming a separate speaker source.
 ```
 
-When dialogue, narration, or lyrics from reference audio are directly reused, or when the input prompt explicitly requests their reperformance, preserve the exact source words and original language inside `<d>`. Write `[unclear]` for unintelligible spans instead of guessing or paraphrasing them. Standardize punctuation to the basic written marks needed to express the sentence, such as `,`, `.`, `?`, and `!`; remove repeated tildes, emoji, bullets, and repeated or decorative punctuation. End complete statements, questions, and exclamations with `.`, `?`, or `!` respectively before `</d>`.
+When dialogue, narration, or lyrics from reference audio are directly reused, or when the input prompt explicitly requests their reperformance, preserve the exact source words and original language inside `<d>`. Write `[unclear]` for unintelligible spans instead of guessing or paraphrasing them. For a fresh transcription without user-specified performance notation, use ordinary sentence punctuation and omit unrelated formatting artifacts. Do not apply that cleanup to a user-authored performance script: preserve its tags, bracketed delivery qualifiers, ellipses, stutter hyphens, elongated vowels, and intentional punctuation. In particular, `[English, singing]`, `[English, crying]`, `[Hum]`, and the supplied standalone breathing or pause cues are not decoration to strip. Keep explanatory acting prose outside `<d>` while retaining the user's inline cues where supplied.
 
 When only timbre, rhythm, emotion, or delivery is referenced, do not carry the original dialogue from the reference audio into the target video.
 

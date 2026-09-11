@@ -3,258 +3,285 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MiniMax H3 · Video Queue</title>
+<title>有声视频 · MiniMax H3</title>
 <style>
-  :root{
-    --bg:#0d1017; --panel:#141924; --line:#232b3a; --text:#e7ecf3; --dim:#9aa6bb;
-    --acc:#4f8cff; --acc2:#2f6ce0; --ok:#3ecf8e; --err:#ff5c5c; --warn:#f5b942;
-  }
+  :root{color-scheme:dark;--bg:#0c111b;--panel:#141c2b;--line:#2a3549;--text:#eef3fb;--dim:#a8b6cb;--acc:#8eb8ff;--ok:#74deb0;--err:#ffaaaa;--warn:#f3ce83}
   *{box-sizing:border-box}
-  html,body{margin:0;min-height:100%}
-  body{
-    background:radial-gradient(1200px 800px at 70% -10%,#17203a 0,var(--bg) 55%);
-    color:var(--text);
-    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
-    display:flex;
-    padding:24px;
-  }
-  .card{
-    width:min(680px,100%);
-    margin:auto; /* 居中;内容高于视口时自动顶对齐,避免 flex 居中裁掉顶部 */
-    background:linear-gradient(180deg,#161c29,#11151f);
-    border:1px solid var(--line);
-    border-radius:16px;
-    padding:26px 26px 22px;
-    box-shadow:0 24px 70px rgba(0,0,0,.45);
-  }
-  h1{font-size:18px;margin:0 0 2px;letter-spacing:.3px}
-  .sub{color:var(--dim);font-size:13px;margin:0 0 18px}
-  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 7px}
-  textarea{
-    width:100%;min-height:96px;resize:vertical;
-    background:#0c1018;color:var(--text);
-    border:1px solid var(--line);border-radius:10px;
-    padding:12px 14px;font-size:15px;line-height:1.5;
-    outline:none;transition:border-color .15s,box-shadow .15s;
-  }
-  textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(79,140,255,.15)}
-  .row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
-  button{
-    appearance:none;border:none;cursor:pointer;
-    background:linear-gradient(180deg,var(--acc),var(--acc2));
-    color:#fff;font-weight:650;font-size:15px;
-    padding:11px 22px;border-radius:10px;
-    transition:filter .12s,transform .05s;
-  }
-  button:hover{filter:brightness(1.08)}
-  button:active{transform:translateY(1px)}
-  button:disabled{filter:grayscale(.7) brightness(.6);cursor:not-allowed}
-  .toggle{display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer;user-select:none;font-size:14px;color:var(--text)}
-  .toggle input{position:absolute;opacity:0;width:0;height:0}
-  .switch{display:inline-block;width:40px;height:22px;background:#0c1018;border:1px solid var(--line);border-radius:999px;position:relative;flex:none;transition:background .15s,border-color .15s}
-  .switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dim);transition:transform .15s,background .15s}
-  .toggle input:checked + .switch{background:var(--acc);border-color:var(--acc)}
-  .toggle input:checked + .switch::after{transform:translateX(18px);background:#fff}
-  details{margin-left:0;font-size:13px;color:var(--dim);margin-top:8px}
-  details summary{cursor:pointer;user-select:none}
-  .adv{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-  .adv label{margin-bottom:4px}
-  .adv input,.adv select{
-    width:100%;background:#0c1018;color:var(--text);
-    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;outline:none;
-  }
-  .adv input:focus,.adv select:focus{border-color:var(--acc)}
-  #status{margin-top:16px;font-size:14px}
-  .spinner{
-    display:inline-block;width:14px;height:14px;border:2px solid var(--line);
-    border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;
-    vertical-align:-2px;margin-right:8px;
-  }
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .badge{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);margin-right:8px}
-  .badge.running{color:var(--acc);border-color:rgba(79,140,255,.4)}
-  .badge.queued{color:var(--warn);border-color:rgba(245,185,66,.4)}
-  .badge.done{color:var(--ok);border-color:rgba(62,207,142,.4)}
-  .badge.err{color:var(--err);border-color:rgba(255,92,92,.4)}
-  #result{margin-top:16px;display:none}
-  #result.visible{display:block}
-  video{width:100%;border-radius:12px;border:1px solid var(--line);background:#000;display:block}
-  .dl{
-    display:flex;align-items:center;gap:10px;margin-top:12px;
-    padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#0c1018;
-  }
-  .dl .fname{flex:1;min-width:0;font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .dl a{
-    color:#fff;text-decoration:none;font-weight:650;white-space:nowrap;
-    background:linear-gradient(180deg,var(--acc),var(--acc2));
-    padding:8px 16px;border-radius:8px;font-size:14px;
-  }
-  .dl a:hover{filter:brightness(1.08)}
-  #err{margin-top:14px;color:var(--err);font-size:13px;display:none;white-space:pre-wrap}
-  .muted{color:var(--dim);font-size:12px;margin-top:4px}
-  #queue-panel{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
-  #queue-panel h2{font-size:13px;margin:0 0 10px;color:var(--dim);letter-spacing:.02em;font-weight:600}
-  .qhead{font-size:14px;color:var(--acc);margin-bottom:8px}
-  .qempty{font-size:13px;color:var(--dim);padding:8px 0}
-  .qitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#0c1018;margin-bottom:6px;font-size:13px}
-  .qitem.running{border-color:rgba(79,140,255,.45)}
-  .qitem.queued{border-color:rgba(245,185,66,.45)}
-  .qitem.done{border-color:rgba(62,207,142,.4)}
-  .qitem.err{border-color:rgba(255,92,92,.4)}
-  .qitem{position:relative}
-  .qtop{display:flex;align-items:center;gap:10px}
-  .qmeta{flex:1;min-width:0}
-  .qname{display:block;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .qparams{font-size:11px;color:var(--dim);white-space:nowrap}
-  .qtime{flex:none;font-size:12px;color:var(--acc);white-space:nowrap}
-  .qbar{height:6px;border-radius:999px;background:#0c1018;border:1px solid var(--line);margin-top:6px;overflow:hidden}
-  .qbar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));width:0;transition:width .4s}
-  .qdetail{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px;color:var(--dim)}
-  .qitem.open .qdetail{display:block}
-  .qitem.clickable{cursor:pointer}
-  .qdetail .full{padding:4px 0;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:150px;overflow:auto}
-  .qsep{margin:14px 0 8px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
-  .qstate{flex:none;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
-
-  /* 手机端自适应:窄屏下卡片全宽、间距缩小、行内容可换行不挤压 */
-  @media (max-width: 640px){
-    body{padding:12px}
-    .card{padding:18px 16px;border-radius:12px}
-    h1{font-size:16px;margin-bottom:2px}
-    .sub{font-size:12px;margin-bottom:14px}
-    textarea{min-height:84px;font-size:14px;padding:10px 12px}
-    button{padding:11px 18px;font-size:14px}
-    .qitem{padding:8px 9px;margin-bottom:6px}
-    .qtop{flex-wrap:wrap;row-gap:4px}
-    .qname{font-size:12px}
-    .qparams{font-size:10px}
-    .qstate{font-size:11px;padding:2px 7px}
-    .qtime{font-size:11px}
-    .qprev,.qdl{font-size:11px;margin-right:6px}
-    .qdetail{font-size:11px}
-    .qbar{height:5px}
-  }
-  .qitem.running .qstate{color:var(--acc);border-color:rgba(79,140,255,.4)}
-  .qitem.queued .qstate{color:var(--warn);border-color:rgba(245,185,66,.4)}
-  .qitem.done .qstate{color:var(--ok);border-color:rgba(62,207,142,.4)}
-  .qitem.err .qstate{color:var(--err);border-color:rgba(255,92,92,.4)}
-  .qprompt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
-  .qid{flex:none;color:var(--dim);font-size:11px;font-family:monospace}
-  .qdl{flex:none;color:var(--acc);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;margin-right:10px}
-  .qdl:hover{text-decoration:underline}
-  .qprev{flex:none;color:var(--dim);text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;margin-right:10px}
-  .qprev:hover{color:var(--acc);text-decoration:underline}
-
-  /* 参考图片上传 + 最终提示词预览 */
-  .filewrap{display:flex;align-items:flex-start;gap:12px;margin-top:6px;flex-wrap:wrap}
-  .filebtn{display:inline-block;background:#0c1018;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;flex:none}
-  .filebtn:hover{border-color:var(--acc)}
-  .filebtn input{display:none}
-  .refprev{width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#0c1018}
-  .clearimg{color:var(--err);font-size:12px;cursor:pointer;text-decoration:none;align-self:center}
-  .clearimg:hover{text-decoration:underline}
-  #prompt-preview{margin-top:16px;display:none;border-top:1px solid var(--line);padding-top:14px}
+  [hidden]{display:none!important}
+  html{scroll-padding-bottom:120px}
+  body{margin:0;padding:32px 20px;background:radial-gradient(ellipse at top,#1a2943,var(--bg) 600px);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+  .card{max-width:760px;margin:auto}
+  h1{font-size:30px;line-height:1.25;margin:0 0 10px;letter-spacing:-.03em}
+  h2{font-size:21px;margin:0}
+  .brand{font-size:12px;letter-spacing:.12em;color:var(--acc);margin:0 0 12px;font-weight:700}
+  .topline{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+  .topline .brand{margin:0}
+  .topline a{display:inline-flex;align-items:center;min-height:44px;color:var(--acc);font-size:13px;text-decoration:none;white-space:nowrap}
+  .sub{color:var(--dim);margin:0 0 24px}
+  .composer{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px}
+  label{display:block;color:var(--text);font-size:14px;font-weight:600;margin-bottom:8px}
+  textarea,input,select,button{font:inherit}
+  textarea,input,select{width:100%;background:#0c1422;color:var(--text);border:1px solid #35445f;border-radius:10px;padding:11px 12px;min-width:0}
+  textarea{min-height:112px;resize:vertical;display:block;line-height:1.6}
+  input,select{min-height:48px}
+  textarea::placeholder,input::placeholder{color:#92a1b9}
+  :focus-visible{outline:3px solid var(--acc);outline-offset:3px}
+  textarea:focus,input:focus,select:focus{border-color:var(--acc)}
+  button,a,summary{touch-action:manipulation}
+  button{appearance:none;border:1px solid transparent;border-radius:10px;cursor:pointer;min-height:48px;padding:10px 18px;background:#b0ceff;color:#0a1c36;font-weight:700}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  input:disabled,select:disabled,textarea:disabled{opacity:.7}
+  .secondary{color:var(--text);background:#1c2a40;border-color:var(--line)}
+  .tabs{display:flex;gap:6px;background:#0c1422;border-radius:12px;padding:5px;margin-bottom:22px}
+  .tab{flex:1;color:var(--dim);background:transparent;min-width:0;padding:8px}
+  .tab.active{background:#293e5d;color:#fff}
+  .toggle{display:flex;align-items:center;gap:10px;min-height:44px;margin:12px 0 0;cursor:pointer;font-weight:500}
+  .toggle input{position:absolute;opacity:0;width:1px;height:1px;min-height:0}
+  .switch{width:40px;height:24px;border:1px solid #62718a;background:#263349;border-radius:24px;position:relative;flex:none}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#c2cddd;transition:transform .15s}
+  .toggle input:checked+.switch{background:#85b5ff;border-color:#85b5ff}
+  .toggle input:checked+.switch::after{transform:translateX(16px);background:#102c50}
+  .toggle input:focus-visible+.switch{outline:3px solid var(--acc);outline-offset:3px}
+  .muted,.pnote{color:var(--dim);font-size:13px;line-height:1.6}
+  p.muted{margin:5px 0 0}
+  .settings{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+  .settings>div{min-width:0}
+  details{margin-top:12px}
+  summary{cursor:pointer;color:var(--dim);min-height:44px;padding:10px 0;font-size:14px}
+  .adv{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 12px}
+  .sound-settings textarea{min-height:80px}
+  .filewrap{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0}
+  .filebtn{position:relative;background:#23334c;border:1px dashed #6c87af;border-radius:10px;padding:12px 16px;margin:0;cursor:pointer}
+  .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .filebtn:focus-within{outline:3px solid var(--acc);outline-offset:3px}
+  .refpreviews{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;margin:12px 0}
+  .refcard{min-width:0;padding:8px;border:1px solid var(--line);border-radius:12px;background:#0c1422}
+  .refcard img{display:block;width:100%;height:96px;object-fit:contain;border-radius:6px}
+  .refcard strong{display:block;font-size:13px;margin:6px 0 2px}
+  .refcard .refname{font-size:12px;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .refcard button{display:block;width:100%;min-height:44px;margin-top:4px;padding:8px;font-size:13px}
+  .filebtn.unavailable{opacity:.5;cursor:not-allowed}
+  #ref-error,.field-error{color:var(--err);font-size:13px;margin:8px 0}
+  #ref-error:empty,.field-error:empty{display:none}
+  .keyframe-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+  .keyframe-card{min-width:0;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg)}
+  .keyframe-card .filebtn{display:block;text-align:center;padding:10px 6px}
+  .keyframe-card img{width:100%;height:112px;object-fit:contain;margin:8px 0;border-radius:6px}
+  .keyframe-card .clearimg{width:100%}
+  .keyframe-name{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+  .field-help{margin:4px 0 10px}
+  .field-help summary{display:flex;align-items:center;gap:8px;width:fit-content;min-height:44px;color:var(--acc);list-style:none;padding:8px 4px}
+  .field-help summary::-webkit-details-marker{display:none}
+  .help-icon{display:inline-grid;place-items:center;width:22px;height:22px;border:1px solid currentColor;border-radius:50%;font-weight:800;flex:none}
+  .help-body{padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--dim);font-size:14px;overflow-wrap:anywhere}
+  .help-body p{margin:0 0 8px}
+  .help-body p:last-child{margin:0}
+  .help-body strong{color:var(--text)}
+  .tab{font-size:14px}
+  .clearimg{min-height:44px;background:transparent;color:var(--acc);font-size:14px;padding:10px 12px}
+  #prompt-preview{display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
   #prompt-preview.visible{display:block}
-  #finalPrompt{min-height:110px}
-  .pnote{font-size:12px;color:var(--dim);margin:8px 0 4px;white-space:pre-wrap;word-break:break-word}
+  #finalPrompt{min-height:190px}
+  .pnote{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}
   .pnote.warn{color:var(--warn)}
-  .pp-actions{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
-
-  /* 两种生成方式:无图 / 带图 选项卡 */
-  .tabs{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--line)}
-  .tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);font-weight:600;font-size:14px;padding:9px 10px;cursor:pointer;border-radius:0;filter:none}
-  .tab:hover{color:var(--text)}
-  .tab.active{color:var(--text);border-bottom-color:var(--acc)}
+  .actionbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px}
+  .actionbar button{min-width:180px;flex-shrink:0}
+  #hint{font-size:13px;color:var(--dim);line-height:1.5}
+  #status{font-size:14px;margin-top:14px;overflow-wrap:anywhere}
+  #status:empty{display:none}
+  #err{display:none;color:var(--err);font-size:14px;padding:12px;border:1px solid #793e4c;border-radius:10px;margin-top:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .spinner{display:inline-block;width:15px;height:15px;border:2px solid #516785;border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .badge,.qstate{display:inline-block;font-size:12px;padding:3px 8px;border-radius:6px;background:#23354c;color:var(--acc);margin-right:8px}
+  .badge.done,.qitem.done .qstate{color:var(--ok);background:#173d32}
+  .badge.err{color:var(--err)}
+  .badge.queued,.qitem.queued .qstate{color:var(--warn);background:#3b3425}
+  #result{display:none;margin-top:18px}
+  #result.visible{display:block}
+  video{display:block;width:100%;max-height:70vh;background:#000;border-radius:12px;aspect-ratio:16/9}
+  .dl{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:12px}
+  .fname{min-width:0;color:var(--dim);font-size:14px;overflow-wrap:anywhere}
+  .dl a,.qdl{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 14px;border-radius:9px;background:#23334c;color:var(--text);text-decoration:none;font-weight:600;font-size:14px}
+  #queue-panel{margin-top:32px}
+  .queue-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  #refresh{font-size:14px}
+  .qhead{color:var(--dim);font-size:14px;margin:8px 0 14px}
+  .qempty{padding:24px 16px;background:var(--panel);border:1px dashed var(--line);border-radius:14px;color:var(--dim)}
+  .qitem{display:block;min-width:0;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel);margin-bottom:14px;overflow-wrap:anywhere}
+  .qitem.running{border-color:#6287ba}
+  .qitem.queued{border-color:#877245}
+  .qtop{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .qtime{color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums}
+  .qname{font-size:15px;color:var(--text);white-space:pre-wrap;margin:6px 0 12px}
+  .qparams{font-size:13px;color:var(--dim)}
+  .qbar{height:6px;background:#293850;border-radius:6px;margin:12px 0;overflow:hidden}
+  .qbar i{display:block;height:100%;background:#8eb8ff;width:0}
+  .qsep{margin:24px 0 12px;color:var(--dim);font-size:14px}
+  .video-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+  .video-info div{background:#0e1726;border-radius:9px;padding:8px 12px}
+  .video-info dt{color:var(--dim);font-size:12px}
+  .video-info dd{margin:2px 0 0;font-size:16px;font-weight:650;font-variant-numeric:tabular-nums}
+  .prompt-label{font-size:12px;color:var(--dim);margin-top:14px}
+  .prompt-text{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);font-size:14px;margin:4px 0 0}
+  .prompt-full{margin:0}
+  .prompt-full summary{color:var(--acc)}
+  .video-actions{display:flex;gap:10px;margin-top:14px}
+  .video-actions>*{flex:1}
+  .qprev{font-size:14px;background:#b0ceff;min-height:44px}
+  .inline-player{margin-top:14px}
+  #more{width:100%;margin:0 0 12px}
+  .public-note{font-size:12px;color:var(--dim);margin:18px 0 0}
+  @media(hover:hover){button:not(:disabled):hover,.qdl:hover{filter:brightness(1.1)}}
+  @media(max-width:640px){
+    body{padding:24px 16px calc(114px + env(safe-area-inset-bottom))}
+    h1{font-size:27px}
+    .sub{font-size:14px;margin-bottom:20px}
+    .composer{padding:18px 16px;border-radius:16px}
+    .tabs{margin-bottom:18px}
+    .actionbar{position:fixed;bottom:0;left:0;right:0;z-index:10;margin:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#141e30;border-top:1px solid #344763;box-shadow:0 -8px 25px #0003}
+    .actionbar button{min-width:150px;padding:10px 14px}
+    #hint{max-width:50%;font-size:12px}
+    .qitem{padding:16px}
+    #queue-panel{margin-top:28px}
+    .settings{gap:10px}
+    .settings select{padding:10px 8px}
+    .video-info div{padding:8px 10px}
+    .video-info dd{font-size:15px}
+  }
+  @media(max-width:480px){.keyframe-grid,.settings,.adv{grid-template-columns:1fr}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>MiniMax H3 · Video Queue</h1>
-  <p class="sub">输入一段视频灵感,提交到生产
-     <span class="muted">NVFP4&nbsp;+&nbsp;SolAttn&nbsp;+&nbsp;EasyCache</span> ComfyUI 栈,完成后可下载。</p>
+<main class="card">
+  <div class="topline"><p class="brand">MINIMAX H3 · 有声视频</p><a href="#queue-panel">查看视频 ↓</a></div>
+  <h1>让你的想法，动起来</h1>
+  <p class="sub">描述一个画面，生成带声音的短视频。</p>
 
-  <div class="tabs">
-    <button type="button" class="tab active" data-pane="text">文生视频(无图)</button>
-    <button type="button" class="tab" data-pane="img">图生视频(带图)</button>
-  </div>
-
-  <div id="pane-text" class="pane">
-    <label for="prompt">视频灵感</label>
-    <textarea id="prompt" placeholder="例如:一只金毛幼犬在金色时刻的阳光下穿过公园,镜头平滑跟随,温暖的自然光线,浅景深,轻柔的环境音"></textarea>
-    <label class="toggle" for="deepseek">
-      <input type="checkbox" id="deepseek" checked />
-      <span class="switch"></span>
-      <span>使用 DeepSeek 改写提示词</span>
-    </label>
-    <p class="muted">开启:先由 DeepSeek 按 H3 prompt 规范改写你的灵感,再送去生成;关闭:直接把文字当作完整 prompt 送入。</p>
-  </div>
-
-  <div id="pane-img" class="pane" hidden>
-    <label for="prompt-img">视频灵感 <span class="muted" id="promptImgHint">(可留空,关上 AI 则必填)</span></label>
-    <textarea id="prompt-img" placeholder="可选:补充画面、风格、镜头、音效等。"></textarea>
-    <label for="refimg">参考图片 <span class="muted">(必选一张)</span></label>
-    <div class="filewrap">
-      <label class="filebtn" for="refimg">选择图片<input type="file" id="refimg" accept="image/*" /></label>
-      <img id="refprev" class="refprev" hidden alt="参考图预览" />
-      <a id="clearimg" class="clearimg" hidden>清除</a>
+  <section class="composer" aria-label="创建视频">
+    <div class="tabs" role="tablist" aria-label="创作方式">
+      <button type="button" id="tab-text" class="tab active" role="tab" aria-selected="true" aria-controls="pane-text" data-pane="text">描述画面</button>
+      <button type="button" id="tab-img" class="tab" role="tab" aria-selected="false" aria-controls="pane-img" tabindex="-1" data-pane="img">参考图片</button>
+      <button type="button" id="tab-keyframes" class="tab" role="tab" aria-selected="false" aria-controls="pane-keyframes" tabindex="-1" data-pane="keyframes">首尾帧</button>
     </div>
-    <label class="toggle" for="aidImg">
-      <input type="checkbox" id="aidImg" checked />
-      <span class="switch"></span>
-      <span>使用 AI 辅助(读图 + 改写提示词)</span>
-    </label>
-    <p class="muted">开启:AI 读取图片内容并生成 Ref2VA 提示词(引用 &lt;Picture 1&gt;),你可再编辑;关闭:不读图不改写,用你写的文字当提示词(建议引用 &lt;Picture 1&gt;)。</p>
-  </div>
-
-  <label class="toggle" for="previewPrompt">
-    <input type="checkbox" id="previewPrompt" checked />
-    <span class="switch"></span>
-    <span>预览并可编辑最终提示词</span>
-  </label>
-  <p class="muted">开启:先由 AI / DeepSeek 生成最终提示词并展示,你可修改后再确认生成;关闭:直接生成。</p>
-
-  <div id="prompt-preview">
-    <label for="finalPrompt">最终提示词 (可编辑)</label>
-    <textarea id="finalPrompt"></textarea>
-    <div id="promptNote" class="pnote"></div>
-    <div class="pp-actions">
-      <button id="confirm" type="button">确认并生成</button>
-      <a id="back" class="clearimg">返回修改</a>
+    <div id="pane-text" class="pane" role="tabpanel" aria-labelledby="tab-text">
+      <div data-help="text-mode"></div>
+      <label for="prompt">你想看到什么？</label>
+      <textarea id="prompt" placeholder="例如：小狗在阳光下追着泡泡跑，镜头缓缓跟随，能听到轻快的脚步和鸟叫。" aria-describedby="text-help"></textarea>
+      <div data-help="text-prompt"></div>
+      <label class="toggle" for="deepseek"><input type="checkbox" id="deepseek" checked /><span class="switch"></span><span>AI 帮我完善描述</span></label>
+      <p class="muted" id="text-help">补充镜头、动作与声音；关闭后使用你的原文。</p>
+      <div data-help="text-ai"></div>
     </div>
-  </div>
 
-  <details>
-    <summary>高级设置</summary>
-    <div class="adv">
-      <div><label for="seconds">时长 (秒, 5-8)</label><input id="seconds" type="number" min="5" max="8" step="1" value="5" /></div>
-      <div><label for="steps">采样步数(≥10)</label><input id="steps" type="number" min="10" step="1" /></div>
-      <div><label for="seed">Seed</label><input id="seed" type="number" step="1" /></div>
-      <div><label for="res">分辨率</label><select id="res"><option value="480p">480p (864×480)</option><option value="720p">720p (1280×720)</option></select></div>
+    <div id="pane-img" class="pane" role="tabpanel" aria-labelledby="tab-img" hidden>
+      <div data-help="ref-mode"></div>
+      <label for="refimg">参考图片 <span class="muted">（最多 5 张）</span></label>
+      <div class="filewrap">
+        <label class="filebtn" for="refimg"><span id="refpick-label">选择图片</span><input type="file" id="refimg" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple aria-describedby="ref-help ref-count ref-error" /></label>
+        <button type="button" id="clearimg" class="clearimg" hidden>移除全部</button>
+        <span id="ref-count" class="muted" role="status">已选 0 / 5 张</span>
+      </div>
+      <p id="ref-help" class="muted">可一次选多张，也可分次添加。支持 JPG、PNG、WebP、GIF，总大小不超过 32 MB。描述中可说明“图1的人物、图2的背景”；图片越多，显存占用可能越高。</p>
+      <p id="ref-error" role="alert"></p>
+      <div data-help="references"></div>
+      <div id="refpreviews" class="refpreviews" aria-label="已选参考图片" hidden></div>
+      <label for="prompt-img">想让画面怎么动？ <span class="muted" id="promptImgHint">（选填）</span></label>
+      <textarea id="prompt-img" placeholder="例如：人物转头微笑，镜头慢慢靠近，背景传来海浪声。"></textarea>
+      <div data-help="ref-prompt"></div>
+      <label class="toggle" for="aidImg"><input type="checkbox" id="aidImg" checked /><span class="switch"></span><span>AI 帮我读图和完善描述</span></label>
+      <p class="muted">尽量保留图片中的主体与风格，生成前可以再修改描述。</p>
+      <div data-help="ref-ai"></div>
     </div>
-  </details>
 
-  <div class="row">
-    <button id="go" type="button">生成视频</button>
-    <span class="muted" id="hint"></span>
-  </div>
-
-  <div id="status"></div>
-  <div id="err"></div>
-
-  <div id="result">
-    <video id="preview" controls autoplay muted playsinline></video>
-    <div class="dl">
-      <span class="fname" id="fname"></span>
-      <a id="download" href="#" download>下载视频</a>
+    <div id="pane-keyframes" class="pane" role="tabpanel" aria-labelledby="tab-keyframes" hidden>
+      <div data-help="keyframes-mode"></div>
+      <p class="muted">指定开头、结尾，或同时指定两端。至少选择一张；这里的图片不会混入“参考图片”模式。</p>
+      <div class="keyframe-grid">
+        <div class="keyframe-card">
+          <label for="first-frame">首帧 · 开始的画面</label>
+          <label class="filebtn" for="first-frame"><span id="first-pick">选择首帧</span><input type="file" id="first-frame" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" aria-describedby="frames-help frame-summary frame-error" /></label>
+          <img id="first-preview" width="160" height="112" alt="首帧预览" hidden />
+          <div id="first-name" class="keyframe-name"></div>
+          <button id="clear-first" type="button" class="clearimg" hidden>移除首帧</button>
+          <div data-help="first-frame"></div>
+        </div>
+        <div class="keyframe-card">
+          <label for="last-frame">尾帧 · 结束的画面</label>
+          <label class="filebtn" for="last-frame"><span id="last-pick">选择尾帧</span><input type="file" id="last-frame" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" aria-describedby="frames-help frame-summary frame-error" /></label>
+          <img id="last-preview" width="160" height="112" alt="尾帧预览" hidden />
+          <div id="last-name" class="keyframe-name"></div>
+          <button id="clear-last" type="button" class="clearimg" hidden>移除尾帧</button>
+          <div data-help="last-frame"></div>
+        </div>
+      </div>
+      <p id="frames-help" class="muted">支持 JPG、PNG、WebP、GIF，两张合计不超过 32 MB。建议主体、光线与宽高比相近；当前输出为横屏，首图会缩放，尾图可能居中裁切。</p>
+      <p id="frame-summary" class="muted" role="status">请至少选择首帧或尾帧。</p>
+      <p id="frame-error" class="field-error" role="alert"></p>
+      <label for="prompt-keyframes">从开始到结束，发生什么？ <span class="muted" id="promptFramesHint">（选填）</span></label>
+      <textarea id="prompt-keyframes" placeholder="例如：从关闭的门开始，门缓缓打开，最后停在尾图的敞开状态；镜头不切换，伴随轻微门轴声。"></textarea>
+      <div data-help="frame-prompt"></div>
+      <label class="toggle" for="aidFrames"><input type="checkbox" id="aidFrames" checked /><span class="switch"></span><span>AI 帮我安排两端之间的动作</span></label>
+      <div data-help="frame-ai"></div>
     </div>
-  </div>
 
-  <div id="queue-panel">
-    <h2>任务</h2>
-    <div id="qhead" class="qhead"></div>
+    <details class="sound-settings">
+      <summary>补充声音或对白（选填）</summary>
+      <label for="sound">你想听到什么？</label>
+      <textarea id="sound" placeholder="例如：雨滴落在窗台上，没有配乐。&#10;或写下人物要说的话，以及语气、停顿。"></textarea>
+      <p class="muted">短视频适合一个主要动作和简短对白。已有的声音、对白标签可以直接粘贴。</p>
+      <div data-help="sound"></div>
+    </details>
+
+    <div class="settings">
+      <div><label for="seconds">视频时长</label><select id="seconds"><option value="5">约 5 秒</option><option value="6">约 6 秒</option><option value="7">约 7 秒</option><option value="8">约 8 秒</option></select><div data-help="seconds"></div></div>
+      <div><label for="res">画面清晰度</label><select id="res"><option value="480p">标准 · 480p</option><option value="720p">高清 · 720p</option></select><div data-help="resolution"></div></div>
+    </div>
+    <p class="muted">时长会告诉 AI；实际视频时长可能有少量偏差。高清需要更久。</p>
+    <label class="toggle" for="previewPrompt"><input type="checkbox" id="previewPrompt" checked /><span class="switch"></span><span>生成前，先确认提示词</span></label>
+      <div data-help="preview"></div>
+
+    <details id="advanced">
+      <summary>更多设置</summary>
+      <div data-help="advanced"></div>
+      <div class="adv">
+        <div><label for="steps">采样步数</label><input id="steps" type="number" min="4" max="8" step="1" value="8" inputmode="numeric" /><p class="muted">推荐 8 步，可选 4–8 步。</p><div data-help="steps"></div></div>
+        <div><label for="seed">随机种子</label><input id="seed" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" /><p class="muted">相同设置便于复现画面。</p><div data-help="seed"></div></div>
+      </div>
+    </details>
+
+    <div id="prompt-preview" tabindex="-1">
+      <label for="finalPrompt">确认提示词</label>
+      <textarea id="finalPrompt"></textarea>
+      <div data-help="final-prompt"></div>
+      <div id="promptNote" class="pnote"></div>
+      <button id="back" type="button" class="clearimg">返回修改想法或时长</button>
+    </div>
+    <div class="actionbar">
+      <span id="hint"></span>
+      <button id="go" type="button">准备提示词</button>
+      <button id="confirm" type="button" hidden>确认并生成</button>
+    </div>
+    <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="err" role="alert"></div>
+    <p class="public-note">公开创作空间：提示词、视频和生成队列对所有访客可见，请勿填写隐私信息。</p>
+  </section>
+
+  <section id="result" aria-label="本次生成结果">
+    <h2>视频做好了</h2>
+    <video id="preview" controls playsinline preload="none" aria-label="本次生成的视频"></video>
+    <div class="dl"><span class="fname" id="fname"></span><a id="download" href="#" download>下载视频</a></div>
+  </section>
+
+  <section id="queue-panel" aria-labelledby="queue-title">
+    <div class="queue-title"><h2 id="queue-title">视频与进度</h2><button id="refresh" type="button" class="secondary">刷新</button></div>
+    <div id="qhead" class="qhead" role="status">正在加载视频…</div>
+      <div data-help="results"></div>
     <div id="tlist"></div>
-  </div>
-</div>
+    <div id="fileslist"></div>
+    <button id="more" type="button" class="secondary" hidden>查看更多视频</button>
+  </section>
+</main>
 
 <script type="application/json" id="wf">__H3_WORKFLOW_JSON__</script>
 <script>
@@ -267,11 +294,183 @@
   var go = $("go"), statusEl = $("status"), errEl = $("err"),
       resultEl = $("result"), preview = $("preview"),
       fnameEl = $("fname"), downloadEl = $("download"),
-      refimg = $("refimg"), refPrev = $("refprev"), clearImg = $("clearimg"),
+      refimg = $("refimg"), refPreviews = $("refpreviews"), clearImg = $("clearimg"),
       promptPreview = $("prompt-preview"), finalPrompt = $("finalPrompt"),
       promptNote = $("promptNote"), confirm = $("confirm"), back = $("back"),
       previewPrompt = $("previewPrompt"), aidImg = $("aidImg"),
-      pendingOpts = null;   // 预览模式下暂存的本次提交参数,确认时取回
+      pendingOpts = null, pollTimer = null, activePid = null, pollBusy = false, missingHistory = 0, lastSubmitAt = 0;
+
+  var MAX_REFERENCE_IMAGES = 5, MAX_REFERENCE_BYTES = 32 * 1024 * 1024;
+  var selectedRefs = [], frameRefs = {first:null,last:null};
+  var PANES = ["text","img","keyframes"];
+  var MODE_LABELS = {T2VA:"描述画面",Ref2VA:"参考图片",I2VA:"仅首帧",L2VA:"仅尾帧",FL2VA:"首尾双帧"};
+  function isFrameMode(mode){ return ["I2VA","L2VA","FL2VA"].includes(mode); }
+  function frameItems(){ return ["first","last"].filter(function(role){return !!frameRefs[role];}).map(function(role){return frameRefs[role];}); }
+
+  // Help is local text only: native disclosure works with touch and keyboard.
+  var HELP = {
+  "text-mode": [
+    "描述画面模式",
+    "只写文字，从零生成画面和声音；不需要图片。",
+    "先写主体、一个主要动作，再选约 5–8 秒。开启 AI 可补充镜头与声音。",
+    "小狗追泡泡、咖啡冒热气、雨夜街灯下有人撑伞。",
+    "想指定开头或结尾图片，请改选首尾帧；不要在纯文字里引用不存在的图 1。"
+  ],
+  "ref-mode": [
+    "参考图片模式",
+    "把图片当作人物、物品、场景或风格的参考，不把它们固定为首尾画面。",
+    "最多 5 张，说明每张用途，例如“图 1 的人物，图 2 的背景”；编号按当前列表顺序。",
+    "用人物照片和咖啡馆图片，创作人物抬杯微笑的短镜头。",
+    "本页只上传图片，没有音频或视频参考，不能据此承诺声纹一致。首尾定位请用首尾帧模式。"
+  ],
+  "keyframes-mode": [
+    "首尾帧模式",
+    "限定开头、结尾或两端，让模型生成中间变化。",
+    "首帧和尾帧各有独立位置：两张都传为 FL2VA，只传首图为 I2VA，只传尾图为 L2VA；至少一张。",
+    "门从关闭到打开、人物从低头到抬头、产品从正面转到侧面。",
+    "两图尽量保持同一主体、相近光线和横屏比例。不会自动生成无限长视频，也不保证逐像素还原。"
+  ],
+  "text-prompt": [
+    "画面描述",
+    "告诉模型谁在什么地方、做什么、镜头怎么动。",
+    "先写主要动作，再补景别、朝向、光线与声音；有分秒脚本可以直接粘贴。",
+    "一镜到底，小狗从画面左侧跑向右侧，摄影机向右跟随，听到脚步和鸟鸣。",
+    "几秒短片不适合堆太多独立事件；AI 会收到所选秒数，仍需检查动作是否放得下。"
+  ],
+  "ref-prompt": [
+    "参考图描述",
+    "说明哪些图片提供人物、背景、服装或风格，以及希望发生的动作。",
+    "用当前缩略图编号表达角色；删除中间图片后，后面的编号会顺次前移，请同步检查文字。",
+    "图 1 的人物在图 2 的房间里转头微笑，保持图 1 的服装，镜头轻微靠近。",
+    "AI 关闭时必须填写描述；图片不会自动按编号组成连续分镜。"
+  ],
+  "frame-prompt": [
+    "首尾帧动作描述",
+    "描述从起点到终点的路径，而不只是重复两张静态图。",
+    "写开始状态、可见动作、逐渐接近尾图的变化和结尾状态；仅尾图时写如何抵达它。",
+    "从关闭的书开始，手缓缓翻开封面，最后停在尾图的摊开状态；伴随纸页声。",
+    "一镜到底请明确写出；节拍不是切镜。首尾差异很大时可能变形，先选合理可达的两端。"
+  ],
+  "references": [
+    "参考图片选择",
+    "一次多选或分次添加，最多 5 张；可逐张移除或全部清空。",
+    "选好后看图 1–5 的编号，再写每张的用途。JPG、PNG、WebP、GIF 合计不超过 32 MB。",
+    "用一张人物图加一张场景图，先从少量图片开始创作。",
+    "多图可能增加显存占用。未上传的本地图片刷新后需重选；上传成功的图片名可随草稿恢复。"
+  ],
+  "first-frame": [
+    "首帧",
+    "开头的画面，单独上传时从这里继续演。",
+    "选择首帧，再描述下一步动作；需要指定落点时再加尾帧。点击替换可重新选择，原图会在选择有效后才替换。",
+    "让静态玩偶转头，或把上一段最后一张图作为新镜头开头。",
+    "当前节点把首图缩放到输出画布；比例不同可能拉伸。单末帧接力只提供画面，不会携带上一段音轨或运动 latent。"
+  ],
+  "last-frame": [
+    "尾帧",
+    "希望视频结束时到达的画面。只上传尾图也是可用模式。",
+    "只有尾图时它是图 1；首尾都有时它是图 2。描述如何接近这个结果，别把它写成起点。",
+    "给出已打开的门，让视频展示开门过程；配合首图可更明确地控制两端。",
+    "当前节点会对尾图居中裁切以适配画布，请让关键主体远离边缘。它是模型条件，不是无损复制保证。"
+  ],
+  "sound": [
+    "声音与对白",
+    "补充环境声、动作音效、对白、情绪与表演方式。",
+    "对白尽量简短，写清谁说、语气与停顿；无音乐写“无配乐”。已有 <pause>、<breath>、<whisper> 等标签可原样粘贴。",
+    "雨声铺底，人物轻声说“你来了。”，稍停，再露出微笑；不要配乐。",
+    "标签是提示，不是确定控制。当前没有音频上传、音频精修或长链音轨保护；仅用尾图接力，声音可能重新生成。"
+  ],
+  "seconds": [
+    "视频时长",
+    "控制成片大约多长，不是采样步数，也不是等待时间。",
+    "选择约 5–8 秒；AI 同时收到所选秒数与实际帧数，按时长安排动作和对白。",
+    "简单动作选约 5 秒；要留一点表情反应或短暂停顿，可选约 8 秒。",
+    "帧数会落到 H3 的时间网格，例如 124 帧约 5.17 秒；首尾帧仍在这一段内，不会额外增加一段时长。"
+  ],
+  "resolution": [
+    "画面清晰度",
+    "选择输出尺寸：标准 864×480，高清 1280×720。",
+    "先用标准建立构图；确认内容合适后再考虑高清。图片宽高比尽量接近输出横屏比例。",
+    "手机浏览、快速迭代想法用标准；细节展示可以尝试高清。",
+    "高清通常需要更多资源和时间；当前没有自动超分或竖屏设置，也不保证显存足够。"
+  ],
+  "preview": [
+    "生成前确认",
+    "先看并修改最终提示词，再明确开始生成视频。",
+    "推荐开启：检查人物、图号、首尾角色、秒数和对白后点确认。返回修改可以调整图片和设置。",
+    "先让 AI 扩写“开门”，再把动作改成缓缓推门并增加门轴声。",
+    "准备提示词阶段会锁定设置；关闭此项后，准备完成会直接提交视频任务，不再停下来确认。"
+  ],
+  "advanced": [
+    "更多设置",
+    "少量技术参数；不熟悉时保持默认即可。",
+    "默认 Turbo 8 步与现有加速链保持不变；需要比较变化时一次只改一项。",
+    "固定种子和图片，只改一个动作词，便于比较提示词效果。",
+    "这里没有上下文帧数、Full Previous Tail、音频 refine 或无限续接开关；本轮没有安装这些功能。"
+  ],
+  "steps": [
+    "采样步数",
+    "模型生成过程的迭代次数，和视频几秒是两件事。",
+    "当前 Turbo 工作流默认 8 步，可选 4–8；首次使用保持 8。",
+    "同一段 5 秒视频可以使用 8 步，想试更少步数时再单独调整。",
+    "不要直接套用普通非 Turbo 的 25 或 30 步建议。步数减少不代表总耗时同比减少，也不保证画质和音质不变。"
+  ],
+  "seed": [
+    "随机种子",
+    "用于固定初始噪声，帮助比较相同设置下的结果。",
+    "记录一个整数并保持其他设置一致；改变种子可以尝试不同结果。留空会沿用当前模板种子，不是自动随机。",
+    "用种子 42 固定构图实验，再换 43 看另一种表现。",
+    "模型、提示词、图片和设置都影响结果；固定种子不保证跨设备或跨版本逐像素相同。"
+  ],
+  "final-prompt": [
+    "最终提示词",
+    "这段文字将直接作为生成描述。",
+    "可以编辑，但确认不会再次调用 AI 改写；需要换图、时长或模式请先返回修改。",
+    "删掉多余的第二个动作，保留一个主动作、明确的结尾和简洁声音。",
+    "首尾图的图号与位置已经锁定，检查文字不要写反。表演标签按文字保留，不是网页 HTML。"
+  ],
+  "results": [
+    "视频与进度",
+    "查看共享队列、成片、提示词、视频时长和生成用时。",
+    "点播放可在页面观看，点下载保存文件。长提示词可展开；未记录的时间会如实显示。",
+    "比较两个提示词版本时，记下种子、步数和实际生成用时，再选择喜欢的作品。",
+    "采样进度不等于整条视频完成百分比；排队与实际制作不同。公开空间请勿上传或填写隐私内容。"
+  ],
+  "text-ai": [
+    "文生 AI 开关",
+    "将文字及本模式已上传的图片交给配置的 AI 服务，生成更完整的提示词。",
+    "开启时会补充镜头、动作和声音；首尾模式会明确图片是开头还是结尾。关闭后直接使用你的描述。",
+    "输入“雨夜撑伞”，让 AI 安排一个短镜头，再在确认页检查。",
+    "AI 读图失败会提示并仅按文字改写；图片仍会传给 H3。它不能读取未上传的音频，也不保证复现特定声纹。"
+  ],
+  "ref-ai": [
+    "参考图 AI 开关",
+    "将文字及本模式已上传的图片交给配置的 AI 服务，生成更完整的提示词。",
+    "开启时会补充镜头、动作和声音；首尾模式会明确图片是开头还是结尾。关闭后直接使用你的描述。",
+    "写“图 1 的人物进入图 2 的房间”，让 AI 补充动作和声音。",
+    "AI 读图失败会提示并仅按文字改写；图片仍会传给 H3。它不能读取未上传的音频，也不保证复现特定声纹。"
+  ],
+  "frame-ai": [
+    "首尾帧 AI 开关",
+    "将文字及本模式已上传的图片交给配置的 AI 服务，生成更完整的提示词。",
+    "开启时会补充镜头、动作和声音；首尾模式会明确图片是开头还是结尾。关闭后直接使用你的描述。",
+    "上传关门和开门两图，让 AI 写出连贯的开门路径。",
+    "AI 读图失败会提示并仅按文字改写；图片仍会传给 H3。它不能读取未上传的音频，也不保证复现特定声纹。"
+  ]
+};
+  document.querySelectorAll("[data-help]").forEach(function(host){
+    var entry=HELP[host.dataset.help];if(!entry)return;
+    var details=document.createElement("details");details.className="field-help";
+    var summary=document.createElement("summary");summary.setAttribute("aria-label","查看"+entry[0]+"的使用教程与点子");
+    var icon=document.createElement("span");icon.className="help-icon";icon.textContent="!";icon.setAttribute("aria-hidden","true");
+    var label=document.createElement("span");label.textContent=entry[0]+"说明";
+    summary.append(icon,label);
+    var body=document.createElement("div");body.className="help-body";
+    ["作用","怎么用","创作点子","注意"].forEach(function(title,index){
+      var p=document.createElement("p"), strong=document.createElement("strong");
+      strong.textContent=title+"：";p.append(strong,document.createTextNode(entry[index+1]));body.appendChild(p);
+    });
+    details.append(summary,body);host.appendChild(details);
+  });
 
   // Find a node of a given class within a (possibly cloned) graph.
   function findIn(graph, cls){ for (var id in graph){ if (graph[id].class_type === cls) return graph[id]; } return null; }
@@ -298,43 +497,79 @@
   if (noise && noise.inputs && noise.inputs.noise_seed != null) $("seed").value = noise.inputs.noise_seed;
   if (sigmas && sigmas.inputs && sigmas.inputs.steps) $("steps").value = sigmas.inputs.steps;
 
-  // 两种生成方式:无图 = 文生视频(T2VA);带图 = 参考生视频(Ref2VA, AI 读图)。
+  // 三个独立创作区；首尾帧的角色由上传位置决定，不与参考图混用。
   var activePane = "text";
   function switchPane(p){
     activePane = p;
-    ["text","img"].forEach(function(k){ $("pane-" + k).hidden = (k !== p); });
-    document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("active", t.getAttribute("data-pane") === p); });
+    PANES.forEach(function(k){ $("pane-" + k).hidden = (k !== p); });
+    document.querySelectorAll(".tab").forEach(function(t){
+      var selected = t.getAttribute("data-pane") === p;
+      t.classList.toggle("active", selected); t.setAttribute("aria-selected", selected); t.tabIndex = selected ? 0 : -1;
+    });
     refreshGo();
   }
   document.querySelectorAll(".tab").forEach(function(t){
-    t.addEventListener("click", function(){ switchPane(t.getAttribute("data-pane")); });
+    t.addEventListener("click", function(){ if (!active){ switchPane(t.getAttribute("data-pane")); saveDraft(); } });
+    t.addEventListener("keydown", function(e){
+      if (active || !["ArrowLeft","ArrowRight","Home","End"].includes(e.key)) return;
+      e.preventDefault();
+      var index=PANES.indexOf(activePane), next=e.key==="Home" ? 0 : e.key==="End" ? PANES.length-1 : (index+(e.key==="ArrowRight" ? 1 : -1)+PANES.length)%PANES.length;
+      switchPane(PANES[next]);saveDraft();
+      $("tab-" + activePane).focus();
+    });
   });
-  function currentText(){ return activePane === "img" ? $("prompt-img").value : $("prompt").value; }
-  function modeFor(){ return activePane === "img" ? "Ref2VA" : "T2VA"; }
-  function canGenerate(){
-    if (activePane === "img") return hasImage() && (aidImg.checked || !!$("prompt-img").value.trim()); // 带图:必选图;AI 开则文字可空,AI 关则必填文字
-    return !!$("prompt").value.trim();              // 无图:必填文字
+  function currentText(){ return $(activePane==="keyframes" ? "prompt-keyframes" : activePane==="img" ? "prompt-img" : "prompt").value; }
+  function aiFor(){ return $(activePane==="keyframes" ? "aidFrames" : activePane==="img" ? "aidImg" : "deepseek").checked; }
+  function modeFor(){
+    if(activePane==="keyframes") return frameRefs.first && frameRefs.last ? "FL2VA" : frameRefs.first ? "I2VA" : "L2VA";
+    return activePane==="img" ? "Ref2VA" : "T2VA";
   }
-  function refreshGo(){ go.disabled = active || !canGenerate(); }
+  function canGenerate(){
+    if(activePane==="keyframes") return frameItems().length>0 && (aiFor() || !!currentText().trim());
+    if(activePane==="img") return hasImage() && (aiFor() || !!currentText().trim());
+    return !!currentText().trim();
+  }
+  function missingInputHint(){
+    if(activePane==="keyframes" && !frameItems().length)return "先选首帧或尾帧";
+    if(activePane==="img" && !hasImage())return "先选参考图片，最多 5 张";
+    return activePane==="text" ? "先写下你的视频想法" : "写下描述，或开启 AI 帮你完善";
+  }
+  function refreshGo(){
+    go.disabled = active || !canGenerate();
+    go.hidden = !!pendingOpts; confirm.hidden = !pendingOpts;
+    go.textContent = active ? (activePid ? "正在制作…" : "正在准备…") : previewPrompt.checked ? "准备提示词" : "生成视频";
+    confirm.disabled = !pendingOpts || !finalPrompt.value.trim();
+    $("hint").textContent = pendingOpts ? "确认后开始制作，通常需几分钟" : activePid ? "可以离开，稍后在列表查看" : !canGenerate() ? missingInputHint() : "约 " + secondsFor() + " 秒 · " + (resSel.value === "720p" ? "高清" : "标准") + " · " + stepsFor() + " 步";
+  }
 
   // Resolution presets: 480p (default, proven on this GPU) vs 720p.
   var resSel = $("res");
   resSel.value = (cond && cond.inputs && cond.inputs.width === 1280) ? "720p" : "480p";
 
-  function api(path, opts){
-    return fetch(path, opts).then(function(r){
-      if (!r.ok){ return r.text().then(function(t){ throw new Error("HTTP " + r.status + ": " + t.slice(0,300)); }); }
-      return r.json();
-    });
+  async function api(path, opts){
+    var controller = new AbortController();
+    var timeout = setTimeout(function(){ controller.abort(); }, path === "/h3/prompt" ? 180000 : 20000);
+    try {
+      var r = await fetch(path, Object.assign({}, opts, {signal:controller.signal}));
+      var raw = await r.text(), data;
+      try { data = JSON.parse(raw); } catch(e) {
+        throw new Error(r.ok ? "服务器返回了无法读取的内容，请稍后重试。" : "服务暂时不可用（" + r.status + "），请稍后重试。");
+      }
+      if (!r.ok) throw new Error(typeof data.error === "string" ? data.error : "请求失败（" + r.status + "），请稍后重试。");
+      return data;
+    } catch(e) {
+      if (e.name === "AbortError") throw new Error("连接等待超时，请检查网络后重试。");
+      throw e;
+    } finally { clearTimeout(timeout); }
   }
-  function esc(s){ var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+  function esc(s){ var d=document.createElement("div"); d.textContent=s == null ? "" : String(s); return d.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
   function snip(s, n){ s=(s||'').trim(); return s.length>n ? s.slice(0,n)+'…' : s; }   // 摘要:取前 n 字
   function setStatus(html){ statusEl.innerHTML = html; }
 
   function showError(msg){
     errEl.style.display = "block";
-    errEl.textContent = "错误: " + msg;
-    setStatus('<span class="badge err">failed</span>');
+    errEl.textContent = String(msg);
+    setStatus('<span class="badge err">暂时没能完成</span>你的描述已保留。');
   }
 
   function parseOutputVideo(outputs){
@@ -362,26 +597,26 @@
     return "/h3/download?" + q.toString();
   }
 
-  // ComfyUI /view 的 Content-Disposition 是裸 filename(视为 inline),浏览器会播放
-  // 而不是保存。改用 fetch 取字节 -> blob 对象 URL -> 强制下载(blob 无服务器响应头)。
-  function downloadFile(url, filename){
-    fetch(url).then(function(r){
-      if (!r.ok){ throw new Error("HTTP " + r.status); }
-      return r.blob();
-    }).then(function(blob){
-      var a = document.createElement("a");
-      var obj = URL.createObjectURL(blob);
-      a.href = obj;
-      a.download = filename || "video.mp4";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(obj); }, 3000);
-    }).catch(function(e){ showError("下载失败: " + (e.message || e)); });
-  }
+
 
   // ---- 参考图上传 + 提示词预生成 + Ref2VA 图拼接 ----
-  function hasImage(){ return !!(refimg.files && refimg.files[0]); }
+  function hasImage(){ return selectedRefs.length > 0; }
+  function referenceNames(opts){
+    var names = opts.imageNames;
+    if (names == null) names = opts.imageName ? [opts.imageName] : [];
+    if (!Array.isArray(names) || names.length > MAX_REFERENCE_IMAGES ||
+        names.some(function(name){ return typeof name !== "string" || !name.trim(); })){
+      throw new Error("参考图片记录无效，请返回重新选择，最多 5 张。");
+    }
+    var mode=opts.modeVal || (names.length ? "Ref2VA" : "T2VA");
+    var count={T2VA:[0,0],Ref2VA:[1,5],I2VA:[1,1],L2VA:[1,1],FL2VA:[2,2]}[mode];
+    if(!count || names.length<count[0] || names.length>count[1]) throw new Error("图片与创作模式不匹配，请返回重新选择首帧、尾帧或参考图。");
+    return names.map(function(name){ return name.trim(); });
+  }
+  function inputImageUrl(name){
+    var index = name.lastIndexOf("/");
+    return viewUrl({filename:name.slice(index+1), subfolder:index<0 ? "" : name.slice(0,index), type:"input"});
+  }
 
   function uploadImage(file){
     var fd = new FormData();
@@ -390,506 +625,646 @@
     return api("/upload/image", {method:"POST", body:fd});
   }
 
-  function promptAPI(text, imageName, mode){
-    var body = {user_text:text, mode:mode};
-    if (imageName) body.image_name = imageName;
-    return fetch("/h3/prompt", {method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(body)})
-      .then(function(r){
-        return r.json().then(function(j){
-          if (!r.ok){ var e = new Error(j.error || ("HTTP "+r.status)); e.status=r.status; throw e; }
-          return j;
-        });
-      });
+  function promptAPI(text, imageNames, mode, sec, frames){
+    var direction = "\n\n视频创作要求：这是一个 " + sec + " 秒的视频。请将镜头、动作、对白和停顿安排在该时长内完成。未指定详细节拍时，优先一个清晰的主要动作；已给定分镜时保留动作链、人物朝向和镜头数量，节拍边界不等于切镜，不要擅自删减关键动作或改变时长。";
+    direction += " 分别写清画面、镜头运动与声音；镜头运动要有方向、幅度、速度和构图目的。声音明确来源、节奏及与动作的对应关系，避免对白与大量音效争抢。";
+    direction += " 保留用户明确写出的对白内容和表演标签（例如 <d>、<pause>、<breath>），不要把它们当作 HTML。不要凭空引用未提供的视频或音频素材。";
+    var body = {user_text:text + direction, mode:mode, frame_count:frames};
+    if (imageNames.length === 1) body.image_name = imageNames[0];
+    else if (imageNames.length) body.image_names = imageNames;
+    return api("/h3/prompt", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}).then(function(r){
+      if (!r.h3_prompt || !r.h3_prompt.trim()) throw new Error("AI 没有返回提示词，请重试，或关闭 AI 使用原文。");
+      return r;
+    });
   }
+
+  function secondsFor(){ var n=parseInt($("seconds").value,10); return Number.isFinite(n) ? Math.min(8,Math.max(5,n)) : 5; }
 
   function dimsFor(){
     var r = $("res").value || "480p";
     return r === "720p" ? {w:1280, h:720} : {w:864, h:480};
   }
-  function stepsFor(){ var s=parseInt($("steps").value,10); return (s && s>=10) ? s : 10; }
+  function stepsFor(){ var s=parseInt($("steps").value,10); return Number.isFinite(s) ? Math.min(8, Math.max(4, s)) : 8; }
 
   // 参考图时切到 Ref2VA:改模板里的 cond 节点 + 新增 LoadImage + 换 ref2va 扩散模型。
-  function toRef2va(graph, imageName, promptText, w, h, len){
+  function toRef2va(graph, imageNames, promptText, w, h, len){
     graph.cond.class_type = "MiniMaxH3ReferenceToVideo";
     graph.cond.inputs = {
       clip:["clip",0], vae:["vae_video",0], audio_vae:["vae_audio",0],
       prompt:promptText, width:w, height:h, length:len,
-      ref_image_size:"match",
-      "ref_images.ref_image_0":["refimg_load",0]   // ComfyUI autogrow 点分键
+      ref_image_size:"match"
     };
-    graph.refimg_load = {"class_type":"LoadImage","inputs":{"image":imageName}};
+    imageNames.forEach(function(name,index){
+      var nodeId = index === 0 ? "refimg_load" : "refimg_load_" + index;
+      graph[nodeId] = {class_type:"LoadImage",inputs:{image:name}};
+      graph.cond.inputs["ref_images.ref_image_" + index] = [nodeId,0];
+    });
     var un = findIn(graph, "UNETLoader");
     if (un && un.inputs) un.inputs.unet_name = "minimax_h3_ref2va_pruned_fp8_scaled.safetensors";
   }
 
   function buildGraph(opts){
-    // opts: {text|null, promptText|null, imageName|null, useDeepseek, modeVal, w,h,len, seed, steps, jobId}
+    // Keep the production graph unchanged except for user-selected inputs.
     var graph = JSON.parse(JSON.stringify(template));
     delete graph.h3ds;
-    var useInGraph = !opts.imageName && opts.useDeepseek && opts.promptText == null; // 内联 DeepSeek 改写
+
     var cond = findIn(graph, "MiniMaxH3ImageToVideo");
-    if (opts.imageName){
-      toRef2va(graph, opts.imageName, opts.promptText, opts.w, opts.h, opts.len);
-    } else if (useInGraph){
-      graph.h3ds = {"class_type":"H3DeepSeekPrompt","inputs":{"user_text":opts.text,"mode":opts.modeVal}};
-      cond.inputs.prompt = ["h3ds", 0];
-      cond.inputs.width = opts.w; cond.inputs.height = opts.h; cond.inputs.length = opts.len;
+    var imageNames = referenceNames(opts);
+    var mode=opts.modeVal || (imageNames.length ? "Ref2VA" : "T2VA");
+    if (mode==="Ref2VA"){
+      toRef2va(graph, imageNames, opts.promptText, opts.w, opts.h, opts.len);
     } else {
       cond.inputs.prompt = (opts.promptText != null ? opts.promptText : opts.text);
       cond.inputs.width = opts.w; cond.inputs.height = opts.h; cond.inputs.length = opts.len;
+      delete cond.inputs.first_frame;delete cond.inputs.last_frame;
+      if(mode==="I2VA" || mode==="FL2VA"){
+        graph.first_frame_load={class_type:"LoadImage",inputs:{image:imageNames[0]}};
+        cond.inputs.first_frame=["first_frame_load",0];
+      }
+      if(mode==="L2VA" || mode==="FL2VA"){
+        graph.last_frame_load={class_type:"LoadImage",inputs:{image:imageNames[mode==="FL2VA" ? 1 : 0]}};
+        cond.inputs.last_frame=["last_frame_load",0];
+      }
     }
     var cNoise = findIn(graph, "RandomNoise");
     var cSigmas = findIn(graph, "BasicScheduler");
     var cSave = findIn(graph, "SaveVideo");
-    if (cNoise && cNoise.inputs && opts.seed) cNoise.inputs.noise_seed = opts.seed;
+    if (cNoise && cNoise.inputs && opts.seed !== "") cNoise.inputs.noise_seed = Number(opts.seed);
     if (cSigmas && cSigmas.inputs) cSigmas.inputs.steps = opts.steps;
     if (cSave && cSave.inputs) cSave.inputs.filename_prefix = "video/web_" + opts.jobId;
     return graph;
   }
 
   function submitGraph(graph, opts, started){
-    var pollTimer = null;
-    setStatus('<span class="spinner"></span>提交中…');
-    api("/prompt", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({prompt:graph, client_id:CLIENT_ID})})
+    setStatus('<span class="spinner"></span>正在提交，请勿重复点击…');
+    return api("/prompt", {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prompt:graph, client_id:CLIENT_ID})})
       .then(function(res){
-        if (res.node_errors && Object.keys(res.node_errors).length){
-          throw new Error("节点校验错误: " + JSON.stringify(res.node_errors));
+        if (!res.prompt_id || (res.node_errors && Object.keys(res.node_errors).length)){
+          throw new Error("生成设置未通过检查，请稍后重试。");
         }
-        var pid = res.prompt_id;
-        pendingMeta[pid] = {jobId:opts.jobId, prompt:(opts.promptText || opts.text),
+        activePid = res.prompt_id;
+        pendingMeta[activePid] = {jobId:opts.jobId, prompt:opts.promptText || opts.text,
           steps:opts.steps, sec:opts.sec, res:opts.w+'×'+opts.h};
         savePending();
-        setStatus('<span class="badge queued">已排队</span><span class="spinner"></span>' + esc(pid) + " — 等待开始…");
-        pollTimer = setInterval(function(){ poll(pid, started); }, 4000);
-        poll(pid, started);
+        try { localStorage.setItem("h3active", JSON.stringify({pid:activePid, started:started})); } catch(e){}
+        setStatus('<span class="badge queued">已加入队列</span>开始后会自动更新进度。');
+        refreshGo();
+        clearInterval(pollTimer);
+        pollTimer = setInterval(function(){ poll(activePid, started); }, 4000);
+        poll(activePid, started);
+        renderTasks();
       })
-      .catch(function(e){ busy(false); showError(e.message || String(e)); });
+      .catch(function(e){
+        showPreview(opts, opts.promptText || opts.text, "提交尚未确认。请先检查下方队列，避免重复生成；确认未入队后可重试。");
+        showError(e.message || String(e));
+      });
   }
 
   function doFinalSubmit(opts, started){
-    var graph = buildGraph(opts);
-    submitGraph(graph, opts, started);
+    try {
+      var graph = buildGraph(opts);
+      lastSubmitAt = Date.now();
+      submitGraph(graph, opts, started);
+    } catch(e){
+      showPreview(opts,opts.promptText||opts.text,"设置未通过检查，请返回检查图片和创作模式。");
+      showError(e.message||String(e));
+    }
   }
 
   // 预览模式:展示最终提示词供用户编辑/确认。
   function showPreview(opts, h3prompt, noteHtml){
     pendingOpts = opts;
     finalPrompt.value = h3prompt;
-    promptNote.innerHTML = noteHtml;
+    promptNote.textContent = (MODE_LABELS[opts.modeVal] || "视频") + " · 约 " + opts.sec + " 秒 · " + opts.steps + " 步\n" + noteHtml;
     promptNote.classList.toggle("warn", /⚠|失败|error/i.test(noteHtml || ''));
     promptPreview.classList.add("visible");
-    go.textContent = "等待确认…";
-    setStatus('<span class="badge queued">提示词已生成</span>请在下方确认/修改,再点「确认并生成」');
+    busy(true);
+    setStatus('<span class="badge queued">提示词已准备好</span>检查文字后，点「确认并生成」。');
+    promptPreview.focus({preventScroll:true});
+    promptPreview.scrollIntoView({block:"nearest"});
+    saveDraft();
   }
 
-  // 参考图选择/清除:即时预览缩略图,并自动把模式切到 Ref2VA。
-  function renderRefPrev(){
-    if (hasImage()){
-      refPrev.src = URL.createObjectURL(refimg.files[0]);
-      refPrev.hidden = false;
-      clearImg.hidden = false;
-    } else {
-      refPrev.hidden = true; clearImg.hidden = true;
-      refPrev.removeAttribute("src");
-    }
-    refreshGo();
+  function isSupportedImage(file){
+    return file.type ? /^image\/(jpeg|png|webp|gif)$/.test(file.type) : /\.(jpe?g|png|webp|gif)$/i.test(file.name);
   }
-  refimg.addEventListener("change", renderRefPrev);
-  clearImg.addEventListener("click", function(e){ e.preventDefault(); refimg.value=""; renderRefPrev(); });
+  function updateFrameControls(){
+    ["first","last"].forEach(function(role){
+      var input=$(role+"-frame");input.disabled=active;
+      input.closest(".filebtn").classList.toggle("unavailable",!!active);
+      $("clear-"+role).disabled=active;
+    });
+  }
+  function renderFrames(){
+    ["first","last"].forEach(function(role){
+      var ref=frameRefs[role], img=$(role+"-preview"), label=role==="first" ? "首帧" : "尾帧";
+      img.hidden=!ref;
+      if(ref){img.src=ref.url||inputImageUrl(ref.uploadedName);img.alt=label+"："+ref.name;}
+      else img.removeAttribute("src");
+      $(role+"-name").textContent=ref ? ref.name : "";
+      $(role+"-pick").textContent=(ref ? "替换" : "选择")+label;
+      $("clear-"+role).hidden=!ref;
+    });
+    $("frame-summary").textContent=frameRefs.first && frameRefs.last ? "首尾双帧：图 1 为首帧，图 2 为尾帧。" : frameRefs.first ? "仅首帧：图 1 是开头，AI 从这里继续。" : frameRefs.last ? "仅尾帧：图 1 是结尾，AI 生成通向它的过程。" : "请至少选择首帧或尾帧。";
+    updateFrameControls();refreshGo();
+  }
+  ["first","last"].forEach(function(role){
+    var input=$(role+"-frame");
+    input.addEventListener("change",function(){
+      var added=Array.from(input.files||[]);input.value="";
+      if(active || !added.length)return;
+      var error=$("frame-error");error.textContent="";
+      if(added.length!==1 || !isSupportedImage(added[0])){
+        error.textContent="每个位置请选择一张 JPG、PNG、WebP 或 GIF 图片；原图已保留。";return;
+      }
+      var file=added[0], other=frameRefs[role==="first" ? "last" : "first"];
+      if(file.size+(other ? other.size : 0)>MAX_REFERENCE_BYTES){
+        error.textContent="首尾两张图片合计不能超过 32 MB，请压缩后重选；原图已保留。";return;
+      }
+      if(frameRefs[role] && frameRefs[role].url)URL.revokeObjectURL(frameRefs[role].url);
+      frameRefs[role]={file:file,name:file.name,size:file.size,url:URL.createObjectURL(file),uploadedName:null};
+      renderFrames();saveDraft();
+    });
+    $("clear-"+role).addEventListener("click",function(){
+      if(active)return;
+      if(frameRefs[role] && frameRefs[role].url)URL.revokeObjectURL(frameRefs[role].url);
+      frameRefs[role]=null;$("frame-error").textContent="";renderFrames();saveDraft();input.focus();
+    });
+  });
+
+  function updateRefControls(){
+    refimg.disabled = active || selectedRefs.length >= MAX_REFERENCE_IMAGES;
+    refimg.closest(".filebtn").classList.toggle("unavailable",refimg.disabled);
+    $("refpick-label").textContent = selectedRefs.length >= MAX_REFERENCE_IMAGES ? "已选满 5 张" : hasImage() ? "添加图片" : "选择图片";
+    clearImg.hidden = !hasImage(); clearImg.disabled = active;
+    $("ref-count").textContent = "已选 " + selectedRefs.length + " / " + MAX_REFERENCE_IMAGES + " 张";
+    refPreviews.querySelectorAll("button").forEach(function(button){button.disabled=active;});
+  }
+  function renderRefPreviews(){
+    refPreviews.replaceChildren(); refPreviews.hidden = !hasImage();
+    selectedRefs.forEach(function(ref,index){
+      var card=document.createElement("div");card.className="refcard";
+      var img=document.createElement("img");img.width=128;img.height=96;
+      img.src=ref.url || inputImageUrl(ref.uploadedName);
+      img.alt="参考图 " + (index+1) + "：" + ref.name;
+      var title=document.createElement("strong");title.textContent="图 " + (index+1);
+      var name=document.createElement("div");name.className="refname";name.textContent=ref.name;name.title=ref.name;
+      var remove=document.createElement("button");remove.type="button";remove.className="clearimg";
+      remove.textContent="移除";remove.setAttribute("aria-label","移除参考图 " + (index+1));
+      remove.addEventListener("click",function(){
+        if(active)return;
+        var at=selectedRefs.indexOf(ref);if(at<0)return;
+        selectedRefs.splice(at,1);if(ref.url)URL.revokeObjectURL(ref.url);
+        $("ref-error").textContent="";renderRefPreviews();saveDraft();refimg.focus();
+      });
+      card.append(img,title,name,remove);refPreviews.appendChild(card);
+    });
+    updateRefControls();refreshGo();
+  }
+  refimg.addEventListener("change",function(){
+    var added=Array.from(refimg.files||[]);refimg.value="";
+    if(active || !added.length)return;
+    var error=$("ref-error");error.textContent="";
+    if(selectedRefs.length+added.length>MAX_REFERENCE_IMAGES){
+      error.textContent="最多 5 张；已选 " + selectedRefs.length + " 张，本次最多还可添加 " + (MAX_REFERENCE_IMAGES-selectedRefs.length) + " 张。已有图片已保留。";
+      return;
+    }
+    if(added.some(function(file){return !isSupportedImage(file);})){
+      error.textContent="请选择 JPG、PNG、WebP 或 GIF 图片；本次选择未添加，已有图片已保留。";return;
+    }
+    var total=selectedRefs.reduce(function(sum,ref){return sum+ref.size;},0)+added.reduce(function(sum,file){return sum+file.size;},0);
+    if(total>MAX_REFERENCE_BYTES){
+      error.textContent="参考图片总大小不能超过 32 MB，请压缩图片后重新选择。已有图片已保留。";return;
+    }
+    added.forEach(function(file){selectedRefs.push({file:file,name:file.name,size:file.size,url:URL.createObjectURL(file),uploadedName:null});});
+    renderRefPreviews();saveDraft();
+  });
+  clearImg.addEventListener("click",function(){
+    if(active)return;
+    selectedRefs.forEach(function(ref){if(ref.url)URL.revokeObjectURL(ref.url);});
+    selectedRefs=[];refimg.value="";$("ref-error").textContent="";
+    renderRefPreviews();saveDraft();refimg.focus();
+  });
+  window.addEventListener("pagehide",function(event){
+    if(!event.persisted)selectedRefs.concat(frameItems()).forEach(function(ref){if(ref.url)URL.revokeObjectURL(ref.url);});
+  });
 
   var active = false;
   function busy(on){
     active = on;
+    document.querySelectorAll(".composer input,.composer select,.composer textarea:not(#finalPrompt),.tab,#clearimg").forEach(function(el){ el.disabled = on; });
+    updateRefControls();updateFrameControls();
     refreshGo();
-    go.textContent = on ? "生成中…" : "生成视频";
   }
   $("prompt").addEventListener("input", refreshGo);
   $("prompt-img").addEventListener("input", refreshGo);
-  function updateImgHint(){
-    $("promptImgHint").textContent = aidImg.checked ? "(可留空,AI 会自动读图补全)" : "(必填,关闭 AI 后请自己写提示词)";
-  }
-  aidImg.addEventListener("change", function(){ updateImgHint(); refreshGo(); });
-  updateImgHint();
+  $("prompt-keyframes").addEventListener("input", refreshGo);
+  finalPrompt.addEventListener("input", refreshGo);
+  aidImg.addEventListener("change", function(){
+    $("promptImgHint").textContent = aidImg.checked ? "（选填）" : "（请填写描述）"; refreshGo();
+  });
+  $("aidFrames").addEventListener("change",function(){
+    $("promptFramesHint").textContent=$("aidFrames").checked ? "（选填）" : "（请填写描述）";refreshGo();
+  });
+  ["seconds","res","steps","previewPrompt"].forEach(function(id){ $(id).addEventListener("change",refreshGo); });
 
-  // 主按钮:按当前选项卡(无图/带图)预生成提示词或直接提交。
+  // AI 开启时，所有模式与预览/直接生成都走同一个带时长约束的接口。
   go.addEventListener("click", async function(){
-    if (active){ return; }
-    if (!canGenerate()){ return; }
-    var imgMode = activePane === "img";
-    var useDeepseek = $("deepseek").checked;
-    var idea = currentText().trim();
+    if (active || !canGenerate() || Date.now()-lastSubmitAt<700) return;
+    var imgMode = activePane !== "text", idea = currentText().trim(), sound = $("sound").value.trim();
+    var useAI = aiFor(), mode=modeFor();
     errEl.style.display = "none";
-    resultEl.classList.remove("visible");
-    var jobId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    var sec = parseInt($("seconds").value,10) || 5;
-    var d = dimsFor();
+    var d = dimsFor(), sec = secondsFor();
     var base = {
-      text: idea || "Generate a cinematic video that keeps the reference image's subject, style, palette and lighting.",
-      useDeepseek: useDeepseek,
-      jobId: jobId, sec: sec, w: d.w, h: d.h, len: framesForSeconds(sec),
-      seed: $("seed").value, steps: stepsFor(),
-      imageName: null, promptText: null, modeVal: imgMode ? "Ref2VA" : "T2VA"
+      text:idea || (mode==="FL2VA" ? "在一个连续镜头中，从首帧状态自然过渡到尾帧状态，保持人物与场景一致。" : mode==="I2VA" ? "从首帧开始，让画面中的主体自然地动起来。" : mode==="L2VA" ? "从一个合理的起始状态发展，在视频结尾自然抵达所给尾帧。" : "让参考图片中的主体自然地动起来，保留主体、风格、色彩和光线。"),
+      jobId:Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      sec:sec, w:d.w, h:d.h, len:framesForSeconds(sec), seed:$("seed").value, steps:stepsFor(),
+      imageNames:[], promptText:null, modeVal:mode
     };
+    if (sound) base.text += "\n\n声音与对白要求：\n" + sound;
+    var refsForSubmit = activePane==="keyframes" ? frameItems() : imgMode ? selectedRefs.slice() : [];
     busy(true);
-    setStatus('<span class="spinner"></span>' + (imgMode ? '上传参考图 / AI 读图生成提示词…' : '生成提示词…'));
-
+    setStatus('<span class="spinner"></span>' + (imgMode ? '正在上传图片…' : useAI ? 'AI 正在按 ' + sec + ' 秒安排画面和声音…' : '正在准备你的描述…'));
     try {
       if (imgMode){
-        // 带图:先上传图到 input 目录供 Ref2VA 引用,再按「AI 辅助开关」决定提示词来源。
-        var up = await uploadImage(refimg.files[0]);
-        base.imageName = up.name || up.filename;
-        base.modeVal = "Ref2VA";
-        if (aidImg.checked){
-          var r = await promptAPI(base.text, base.imageName, "Ref2VA");
-          base.promptText = r.h3_prompt;
-          if (!previewPrompt.checked){ return doFinalSubmit(base, Date.now()); }
-          var note = (r.image_description ? '参考图视觉描述:\n' + r.image_description : '')
-                   + (r.vlm_error ? '\n⚠ 视觉模型读图失败(仍按文字生成): ' + r.vlm_error : '');
-          if (!note.trim()) note = 'AI 已读图 + DeepSeek skill 生成,可编辑后提交。';
-          showPreview(base, r.h3_prompt, note);
-          return;
+        for (var index=0;index<refsForSubmit.length;index++){
+          var ref=refsForSubmit[index];
+          if(!ref.uploadedName){
+            setStatus('<span class="spinner"></span>正在上传第 ' + (index+1) + ' / ' + refsForSubmit.length + ' 张图片…');
+            var up=await uploadImage(ref.file), imageFile=up.name || up.filename;
+            if(!imageFile)throw new Error("第 " + (index+1) + " 张图片上传失败，请重试。");
+            ref.uploadedName=up.subfolder ? up.subfolder + "/" + imageFile : imageFile;
+            saveDraft();
+          }
+          base.imageNames.push(ref.uploadedName);
         }
-        // AI 关闭:不读图不改写,用用户写的原文当提示词。
-        base.promptText = base.text;
-        if (previewPrompt.checked){
-          showPreview(base, base.text, 'AI 辅助已关闭:未读图/未改写,使用你写的文字作为提示词(别忘引用 <Picture 1> 才能用上参考图)。');
-          return;
-        }
-        return doFinalSubmit(base, Date.now());
       }
-      // 无图:文生视频。
-      if (previewPrompt.checked){
-        if (useDeepseek){
-          var r2 = await promptAPI(base.text, null, "T2VA");
-          base.promptText = r2.h3_prompt;
-          showPreview(base, r2.h3_prompt, '已用 DeepSeek + skill 改写为最终提示词,可编辑后提交。');
-        } else {
-          base.promptText = base.text;
-          showPreview(base, base.text, '未启用改写,把你的原文当作最终提示词,可编辑后提交。');
-        }
-        return;
-      }
-      base.promptText = useDeepseek ? null : base.text; // null => 图内 DeepSeek 改写
-      return doFinalSubmit(base, Date.now());
+      var note = "使用你的原文，未进行 AI 改写。";
+      if (useAI){
+        setStatus('<span class="spinner"></span>AI 正在按 ' + sec + ' 秒安排画面和声音…');
+        var r = await promptAPI(base.text, base.imageNames, base.modeVal, sec, base.len);
+        base.promptText = r.h3_prompt;
+        note = "已按约 " + sec + " 秒的视频完善描述" + (base.imageNames.length ? "，已使用 " + base.imageNames.length + " 张图片" : "") + "，可直接修改。";
+        if (r.vlm_error) note += "\n图片识别失败，当前仅根据文字编写；可返回重试。";
+      } else base.promptText = base.text;
+      if (previewPrompt.checked) showPreview(base, base.promptText, note);
+      else doFinalSubmit(base, Date.now());
     } catch(e){
       busy(false); showError(e.message || String(e));
     }
   });
 
-  // 预览模式下:用编辑后的最终提示词确认提交。
   confirm.addEventListener("click", function(){
-    if (!pendingOpts){ return; }
+    if (!pendingOpts || !finalPrompt.value.trim()) return;
     var opts = pendingOpts;
     opts.promptText = finalPrompt.value.trim();
-    opts.sec = parseInt($("seconds").value,10) || 5;
-    var dd = dimsFor();
-    opts.w = dd.w; opts.h = dd.h; opts.len = framesForSeconds(opts.sec);
-    opts.steps = stepsFor();
+    pendingOpts = null;
+    confirm.disabled = true;
     promptPreview.classList.remove("visible");
+    saveDraft();
     busy(true);
     doFinalSubmit(opts, Date.now());
   });
-  back.addEventListener("click", function(e){
-    e.preventDefault();
+  back.addEventListener("click", function(){
     promptPreview.classList.remove("visible");
     pendingOpts = null;
     busy(false);
-    setStatus("");
+    setStatus("可以修改想法或时长；再次准备会重新编写提示词。");
+    saveDraft();
   });
 
-  function poll(pid, started){
-    api("/queue").then(function(q){
-      var running = (q.queue_running || []), pending = (q.queue_pending || []);
-      var inPending = -1;
-      for (var i=0;i<pending.length;i++){ if (pending[i][1] === pid){ inPending = i; break; } }
-      var isRunning = false;
-      for (var j=0;j<running.length;j++){ if (running[j][1] === pid){ isRunning = true; break; } }
-      var sec = Math.floor((Date.now()-started)/1000);
-      var mm = Math.floor(sec/60), ss = ("0"+(sec%60)).slice(-2);
-      if (isRunning){
-        setStatus('<span class="badge running">运行中</span>' + esc(pid) + " · " + mm + ":" + ss);
-      } else if (inPending >= 0){
-        setStatus('<span class="badge queued">已排队</span>' + esc(pid) + " · 位置 " + (inPending+1) + " / " + pending.length + " · " + mm + ":" + ss);
-      }
-    }).catch(function(){});
-
-    api("/history/" + pid).then(function(h){
-      if (!h || !h[pid]){ return; }
-      clearInterval(pollTimer);
-      var rec = h[pid];
-      var status = rec.status || {};
-      var str = status.status_str;
-      if (str === "error"){
-        var msg = "";
-        (status.messages || []).forEach(function(m){ msg += (m[1] && m[1].message ? m[1].message : String(m[1])) + "\n"; });
-        busy(false);
-        showError(msg.trim() || "生成失败(未知错误)。");
+  async function poll(pid, started){
+    if (!pid || pollBusy) return;
+    pollBusy = true;
+    try {
+      var h = await api("/history/" + encodeURIComponent(pid)), rec = h && h[pid];
+      if (!rec){
+        missingHistory++;
+        if(missingHistory>=3){
+          var q=await api("/queue");
+          var exists=(q.queue_running||[]).concat(q.queue_pending||[]).some(function(it){return it[1]===pid;});
+          if(!exists){
+            clearInterval(pollTimer);pollTimer=null;activePid=null;
+            try {localStorage.removeItem("h3active");} catch(e){}
+            busy(false);
+            setStatus("上次任务已不在当前队列中。服务可能重启过，请先到下方视频列表检查结果，再决定是否重新生成。");
+          }
+          missingHistory=0;
+        }
         return;
       }
-      if (str !== "success" && !str){ return; }
+      missingHistory=0;
+      var st = rec.status || {};
+      if (!st.completed && st.status_str !== "error") return;
+      clearInterval(pollTimer); pollTimer = null; activePid = null;
+      try { localStorage.removeItem("h3active"); } catch(e){}
+      if (st.status_str === "error"){
+        delete pendingMeta[pid]; savePending(); busy(false);
+        showError("这次视频没有生成成功。描述已保留，可重试或使用标准清晰度。");
+        return;
+      }
       var item = parseOutputVideo(rec.outputs || {});
-      if (!item){
-        busy(false);
-        showError("已完成但历史里没有找到视频输出。");
-        return;
-      }
-      preview.src = viewUrl(item);                       // 预览: /view 流式播放
-      fnameEl.textContent = item.filename + (item.subfolder ? " · " + item.subfolder : "");
-      downloadEl.href = downloadUrl(item);               // 下载: /h3/download, attachment 强制保存
-      downloadEl.setAttribute("download", item.filename);
+      if (!item){ busy(false); showError("任务已结束，但未找到视频。请刷新下方列表检查。"); return; }
+      postMeta(pid, rec);
+      preview.src = viewUrl(item);
+      fnameEl.textContent = "可在下方查看提示词、视频时长和生成用时。";
+      downloadEl.href = downloadUrl(item); downloadEl.setAttribute("download", item.filename);
       resultEl.classList.add("visible");
-      var sec = Math.floor((Date.now()-started)/1000);
-      var mm = Math.floor(sec/60), ss = ("0"+(sec%60)).slice(-2);
-      setStatus('<span class="badge done">完成</span>' + esc(pid) + " · " + mm + ":" + ss);
+      var timing = historyTimings(rec);
+      setStatus('<span class="badge done">视频做好了</span>' + (timing.duration != null ? '生成用时 ' + fmt(timing.duration) : '可以播放或下载。'));
       busy(false);
-    }).catch(function(e){});
+      renderTasks();
+    } catch(e){
+      setStatus('<span class="badge queued">连接暂时中断</span>会自动重试；已提交的任务不会因此取消。');
+    } finally { pollBusy = false; }
   }
 
-  // ---- 全局任务:每条带 prompt/参数,新版在前,点击展开看消耗/预计 ----
-  var qhead = $("qhead"), tlist = $("tlist");
-  var tasks = {};        // pid -> task meta (persisted to localStorage)
-  var openPids = {};     // pid -> expanded
-  var pendingMeta = {};  // pid -> {jobId,prompt,steps,sec,res} 待回写 /h3/meta
-  var WS_PROGRESS = null;
-
-  function loadTasks(){ try { tasks = JSON.parse(localStorage.getItem('h3tasks')||'{}'); } catch(e){ tasks={}; } }
-  function saveTasks(){
-    var slim = {};
-    for (var pid in tasks){ var t=tasks[pid]; slim[pid]={prompt:t.prompt, steps:t.steps, length:t.length, res:t.res, createTime:t.createTime, startReal:t.startReal, finished:t.finished}; }
-    try { localStorage.setItem('h3tasks', JSON.stringify(slim)); } catch(e){}
+  var qhead = $("qhead"), tlist = $("tlist"), fileslist = $("fileslist");
+  var tasks = {}, pendingMeta = {}, metaPosting = {};
+  var currentFiles = [], visibleFiles = 6, fileCards = new Map(), taskCards = new Map(), rendering = false;
+  try { pendingMeta = JSON.parse(localStorage.getItem("h3pending") || "{}"); } catch(e){}
+  function savePending(){ try { localStorage.setItem("h3pending",JSON.stringify(pendingMeta)); } catch(e){} }
+  function fmt(sec){
+    sec = Math.max(0,Math.floor(sec));
+    var m = Math.floor(sec/60), n=sec%60;
+    return m ? m + " 分 " + n + " 秒" : n + " 秒";
   }
-  // pendingMeta 也落到 localStorage,页面刷新/ComfyUI 重启后仍能把用时回写成 /h3/meta。
-  function loadPending(){ try { pendingMeta = JSON.parse(localStorage.getItem('h3pending')||'{}'); } catch(e){ pendingMeta={}; } }
-  function savePending(){ try { localStorage.setItem('h3pending', JSON.stringify(pendingMeta)); } catch(e){} }
-  loadTasks();
-  loadPending();
-
-  function shortId(id){ return (id||'').slice(0,8); }
-  function fmt(sec){ sec=Math.max(0, Math.floor(sec||0)); var m=Math.floor(sec/60), s=sec%60; return m+':'+('0'+s).slice(-2); }
   function graphParams(graph){
-    var g = graph||{}, c=(g.cond&&g.cond.inputs)||{}, s=(g.sigmas&&g.sigmas.inputs)||{}, h=(g.h3ds&&g.h3ds.inputs)||{};
-    var len = c.length, sec = len ? Math.round(len/24) : null;   // 24fps -> 视频秒数
-    return { prompt: h.user_text || (typeof c.prompt==='string' ? c.prompt : '(未命名)'),
-             steps: s.steps, length: len, sec: sec, res: (c.width||0)+'×'+(c.height||0) };
+    var g=graph || {}, c=(g.cond && g.cond.inputs)||{}, sig=findIn(g,"BasicScheduler"), h=(g.h3ds && g.h3ds.inputs)||{};
+    return {prompt:h.user_text || (typeof c.prompt === "string" ? c.prompt : "提示词正在准备中"),
+      steps:sig && sig.inputs.steps, sec:c.length ? c.length/24 : null, res:c.width && c.height ? c.width+"×"+c.height : null};
   }
-  function paramOf(item){ return graphParams(item[2]||{}); }
-  // 从历史 status.messages 拿真实执行起止时间戳
   function historyTimings(rec){
     var start=null, end=null;
-    ((rec.status||{}).messages||[]).forEach(function(m){
-      var ty=m[0], d=m[1]||{};
-      if (ty==='execution_start') start=d.timestamp;
-      if (ty==='execution_success'||ty==='execution_error'||ty==='execution_interrupted') end=d.timestamp;
+    (((rec||{}).status||{}).messages||[]).forEach(function(m){
+      var d=m[1]||{};
+      if(m[0]==="execution_start") start=d.timestamp;
+      if(["execution_success","execution_error","execution_interrupted"].includes(m[0])) end=d.timestamp;
     });
-    return {start:start, end:end};
+    return {start:start, end:end, duration:Number.isFinite(start) && Number.isFinite(end) && end>=start ? (end-start)/1000 : null};
+  }
+  async function postMeta(pid, rec){
+    var pm=pendingMeta[pid];
+    if(!pm || metaPosting[pid]) return;
+    metaPosting[pid]=true;
+    try {
+      if(!rec){ var h=await api("/history/"+encodeURIComponent(pid)); rec=h && h[pid]; }
+      if(!rec) return;
+      if((rec.status||{}).status_str === "error"){ delete pendingMeta[pid]; savePending(); return; }
+      if(!(rec.status||{}).completed) return;
+      var item=parseOutputVideo(rec.outputs||{}); if(!item) return;
+      var timing=historyTimings(rec);
+      var meta={filename:item.filename,prompt:pm.prompt,steps:pm.steps,sec:pm.sec,res:pm.res};
+      if(timing.duration != null) meta.dur=timing.duration;
+      await api("/h3/meta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(meta)});
+      delete pendingMeta[pid]; savePending();
+    } catch(e){ /* Keep pending metadata for the next successful connection. */ }
+    finally { delete metaPosting[pid]; }
   }
 
-  // WebSocket /ws: 真实采样步进(用于预计剩余)
+  function phaseOf(t){
+    if(t.stage) return t.stage;
+    return "正在准备模型与画面，首次运行会较久";
+  }
   function connectWS(){
-    var proto = location.protocol==='https:' ? 'wss://' : 'ws://';
-    var ws = new WebSocket(proto + location.host + '/ws');
-    ws.onmessage = function(ev){
-      var m; try { m = JSON.parse(ev.data); } catch(e){ return; }
-      if (m && m.type==='progress' && m.data && m.data.prompt_id){
-        var pid = m.data.prompt_id;
-        WS_PROGRESS = {pid:pid, value:m.data.value, max:m.data.max, at:Date.now()};
-        var t = tasks[pid] || (tasks[pid]={});
-        t.value = m.data.value; t.max = m.data.max; t.lastProgress = Date.now();
-        if (!t.startTs && !t.createTime) t.startTs = Date.now();
-      } else if (m && (m.type==='executed'||m.type==='execution_success') && m.data && m.data.prompt_id){
-        var p2 = m.data.prompt_id;
-        if (tasks[p2]){ tasks[p2].finished = Date.now(); saveTasks(); }
-        if (m.type==='execution_success') postMeta(p2);   // 一完成就回写用时,不受 5s 轮询影响
-      }
-    };
-    ws.onclose = function(){ setTimeout(connectWS, 2000); };
-  }
-
-  function elapsedOf(t, now){
-    if (t.createTime) return (now - t.createTime)/1000;
-    if (t.startTs) return (now - t.startTs)/1000;
-    return null;
-  }
-  function estRemain(t, now){
-    var el = elapsedOf(t, now);
-    if (!el || !t.value || !t.max) return null;
-    var frac = Math.min(1, t.value/t.max);
-    if (frac <= 0.01) return null;
-    return (el/frac) - el;   // 用真实进度外推总时长
-  }
-  function doneElapsed(t){
-    if (t.startReal && t.finished) return (t.finished - t.startReal)/1000;
-    if (t.createTime && t.finished) return (t.finished - t.createTime)/1000;
-    if (t.startTs && t.finished) return (t.finished - t.startTs)/1000;
-    return null;
-  }
-
-  // 把一个已提交的任务回写成 /h3/meta(prompt/参数/制作用时),按输出文件名存取。
-  // 用时优先用真实结束时间(t.finished),避免轮询延迟多算;跨重启也能回填。
-  function postMeta(pid){
-    var pm = pendingMeta[pid];
-    if (!pm) return;
-    var tm = tasks[pid] || {};
-    var start = tm.startReal || tm.createTime || tm.startTs;
-    var end = tm.finished || Date.now();
-    var dur = start ? Math.max(0, Math.floor((end - start)/1000)) : null;
-    var meta = {filename:'web_' + pm.jobId + '_00001_.mp4', prompt:pm.prompt,
-                steps:pm.steps, sec:pm.sec, res:pm.res};
-    if (dur != null) meta.dur = dur;
-    api('/h3/meta', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(meta)}).catch(function(){});
-    delete pendingMeta[pid];
-    savePending();
-  }
-
-  function taskRow(item){
-    var pid = item[1], p = paramOf(item);
-    var t = tasks[pid] || (tasks[pid] = {});
-    t.prompt = p.prompt; t.steps = p.steps; t.length = p.length; t.res = p.res;
-    var now = Date.now();
-    var el = elapsedOf(t, now), rem = estRemain(t, now);
-    var bar = (t.value && t.max) ? (t.value/t.max*100) : 0;
-    var timeTxt = el!=null ? ('已用 '+fmt(el)) : '';
-    if (rem!=null) timeTxt += ' · 预计剩余 ~'+fmt(rem);
-    return '<div class="qitem running clickable'+(openPids[pid]?' open':'')+'" data-pid="'+pid+'">' +
-      '<div class="qtop">' +
-        '<span class="qstate">运行中</span>' +
-        '<span class="qmeta"><span class="qname">'+esc(snip(p.prompt,5))+'</span>' +
-          '<span class="qparams">'+esc(p.res||'')+(p.sec?' · ≈'+p.sec+'s':'')+(p.steps?' · '+p.steps+'步':'')+'</span></span>' +
-        '<span class="qtime" data-pid="'+pid+'">'+timeTxt+'</span>' +
-      '</div>' +
-      '<div class="qbar"><i style="width:'+bar.toFixed(1)+'%"></i></div>' +
-      '<div class="qdetail"><span class="qid">'+esc(shortId(pid))+'</span></div>' +
-    '</div>';
-  }
-  function doneRow(t, pid){
-    var el = doneElapsed(t);
-    var timeTxt = el!=null ? ('耗时 '+fmt(el)) : '';
-    var out = t.output;
-    return '<div class="qitem '+(t.status==='error'?'err':'done')+' clickable'+(openPids[pid]?' open':'')+'" data-pid="'+pid+'">' +
-      '<div class="qtop">' +
-        '<span class="qstate">'+(t.status==='error'?'失败':'完成')+'</span>' +
-        '<span class="qmeta"><span class="qname">'+esc(snip(t.prompt || (out?out.filename:'—'), 5))+'</span>' +
-          '<span class="qparams">'+esc(t.res||'')+(t.sec?' · ≈'+t.sec+'s':'')+(t.steps?' · '+t.steps+'步':'')+'</span></span>' +
-        '<span class="qtime">'+timeTxt+'</span>' +
-      '</div>' +
-      '<div class="qdetail">' +
-        (t.prompt ? '<div class="full">'+esc(t.prompt)+'</div>' : '') +
-        '<div class="qid">'+esc(shortId(pid))+'</div>' +
-        (out ?
-          '<a class="qprev" target="_blank" href="'+viewUrl(out)+'" title="在浏览器里播放">预览</a>' +
-          '<a class="qdl" href="'+downloadUrl(out)+'">下载</a>' : '') +
-      '</div>' +
-    '</div>';
-  }
-
-  function fmtSize(n){ if(n>=1048576) return (n/1048576).toFixed(1)+'MB'; if(n>=1024) return (n/1024).toFixed(0)+'KB'; return (n||0)+'B'; }
-  function fmtMtime(ms){
-    if(!ms) return '';
-    var d=new Date(ms), p=function(n){ return ('0'+n).slice(-2); };
-    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
-  }
-  function fileRow(f){
-    var m = f.meta || {};
-    var nameLine = m.prompt ? snip(m.prompt, 5) : f.filename;
-    var params = [];
-    if (m.res) params.push(m.res);
-    if (m.sec) params.push('≈'+m.sec+'s');
-    if (m.steps) params.push(m.steps+'步');
-    params.push(fmtSize(f.size));
-    var timeTxt = m.dur ? ('耗时 '+fmt(m.dur)) : ('制作于 '+fmtMtime(f.mtime_ms));
-    return '<div class="qitem done clickable" data-pid="'+esc(f.filename)+'">' +
-      '<div class="qtop">' +
-        '<span class="qstate">视频</span>' +
-        '<span class="qmeta"><span class="qname">'+esc(nameLine)+'</span>' +
-          '<span class="qparams">'+esc(params.join(' · '))+'</span></span>' +
-        '<span class="qtime">'+timeTxt+'</span>' +
-      '</div>' +
-      '<div class="qdetail">' +
-        '<div class="full">'+esc(f.subfolder ? (f.subfolder+'/'+f.filename) : f.filename)+(m.prompt ? ('\n\n'+m.prompt) : '')+'</div>' +
-        '<span class="qid">'+fmtMtime(f.mtime_ms)+'</span>' +
-        '<a class="qprev" target="_blank" href="'+viewUrl(f)+'">预览</a>' +
-        '<a class="qdl" href="'+downloadUrl(f)+'">下载</a>' +
-      '</div>' +
-    '</div>';
-  }
-
-  function renderTasks(){
-    Promise.all([api('/queue'), api('/h3/files')]).then(function(res){
-      var q=res[0], files=res[1]||[], now=Date.now();
-      var running=q.queue_running||[], pending=q.queue_pending||[];
-      window.__queueCount = running.length + pending.length;
-      qhead.textContent = '运行中 '+running.length+' · 排队 '+pending.length+' · 共 '+window.__queueCount+' 个任务 · 视频 '+files.length+' 个';
-      var html='';
-      running.forEach(function(it){
-        var pid=it[1], t=tasks[pid]||(tasks[pid]={});
-        var p=paramOf(it); t.prompt=p.prompt; t.steps=p.steps; t.length=p.length; t.sec=p.sec; t.res=p.res;
-        t.createTime=(it[3]||{}).create_time; t.isRunning=true;
-        html += taskRow(it);
-      });
-      pending.forEach(function(it, idx){
-        var pid=it[1], t=tasks[pid]||(tasks[pid]={});
-        var p=paramOf(it); t.prompt=p.prompt; t.steps=p.steps; t.length=p.length; t.sec=p.sec; t.res=p.res;
-        t.createTime=(it[3]||{}).create_time; t.isRunning=false; t.pending=true;
-        var el=elapsedOf(t, now);
-        html += '<div class="qitem queued" data-pid="'+pid+'"><div class="qtop">' +
-          '<span class="qstate">排队 第'+(idx+1)+' 位</span>' +
-          '<span class="qmeta"><span class="qname">'+esc(snip(t.prompt,5))+'</span>' +
-          '<span class="qparams">'+esc(t.res||'')+(t.sec?' · ≈'+t.sec+'s':'')+(t.steps?' · '+t.steps+'步':'')+'</span></span>' +
-          '<span class="qtime">'+(el!=null?('已等 '+fmt(el)):'')+'</span></div></div>';
-      });
-      // 本页提交的任务跑完后,把 prompt/参数/制作耗时回写到 /h3/meta(文件名的计数固定 00001_)
-      var queuedPids = {};
-      running.forEach(function(it){ queuedPids[it[1]] = true; });
-      pending.forEach(function(it){ queuedPids[it[1]] = true; });
-      for (var pid in pendingMeta){
-        if (queuedPids[pid]) continue;                    // 还在排/跑,等它完成
+    var ws;
+    try { ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws?clientId="+CLIENT_ID); }
+    catch(e){ return; }
+    ws.onmessage=function(ev){
+      var m; try { m=JSON.parse(ev.data); } catch(e){ return; }
+      var d=m.data||{}, pid=d.prompt_id; if(!pid) return;
+      var t=tasks[pid]||(tasks[pid]={});
+      if(m.type==="progress"){
+        t.value=d.value; t.max=d.max;
+        if(t.sampling) t.stage=d.value>=d.max ? "采样完成，正在合成画面与声音" : "正在生成画面 · 采样 "+d.value+" / "+d.max;
+      } else if(m.type==="executing" && d.node){
+        var cls=(template[d.node]||{}).class_type || "";
+        t.sampling=cls==="SamplerCustomAdvanced";
+        t.stage=t.sampling ? "正在生成画面…" : /VAEDecode|CreateVideo|SaveVideo/.test(cls) ? "正在合成画面、声音并保存视频…" : "正在准备模型与画面，首次运行会较久";
+      } else if(m.type==="execution_success"){
         postMeta(pid);
+        if(pid===activePid) poll(pid,Date.now());
       }
-      // 视频列表来自磁盘(/h3/files),跨重启持久;最新在前
-      var filesHtml='';
-      files.forEach(function(f){ filesHtml += fileRow(f); });
-      if (running.length===0 && pending.length===0 && filesHtml==='') html = '<div class="qempty">空闲</div>';
-      else if (filesHtml) html += '<div class="qsep">视频(磁盘)</div>' + filesHtml;
-      tlist.innerHTML = html;
-      tlist.querySelectorAll('.qitem').forEach(function(el){
-        var pid=el.getAttribute('data-pid');
-        if (openPids[pid]) el.classList.add('open');
-      });
-      saveTasks();
-    }).catch(function(){});
+      if(pid===activePid) setStatus('<span class="spinner"></span>'+esc(phaseOf(t)));
+      tick();
+    };
+    ws.onclose=function(){ setTimeout(connectWS,5000); };
   }
 
-  // 每秒平滑刷新已用/预计/进度条(不整页重渲染)
+  function durationText(m){
+    if(Number.isFinite(m.length) && m.length>0) return "约 "+(m.length/24).toFixed(2)+" 秒";
+    return Number.isFinite(m.sec) && m.sec>0 ? "约 "+m.sec+" 秒" : "未记录";
+  }
+  function promptBlock(prompt){
+    var p=typeof prompt==="string" && prompt.trim() ? prompt : "未记录提示词";
+    var first=snip(p,160);
+    return '<div class="prompt-label">提示词</div><p class="prompt-text">'+esc(first)+'</p>'+
+      (p.length>160 ? '<details class="prompt-full"><summary>查看完整提示词</summary><p class="prompt-text">'+esc(p)+'</p></details>' : '');
+  }
+  function fmtMtime(ms){
+    if(!Number.isFinite(ms)) return "";
+    return new Date(ms).toLocaleString("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});
+  }
+  function fileData(f){
+    var m=f.meta||{}, when=fmtMtime(f.mtime_ms);
+    return '<div class="qtop"><span class="qstate">已完成</span><span class="qtime">'+esc(when)+'</span></div>'+
+      '<dl class="video-info"><div><dt>视频时长</dt><dd class="clip-duration">'+durationText(m)+'</dd></div>'+
+      '<div><dt>生成用时</dt><dd>'+ (Number.isFinite(m.dur) && m.dur>=0 ? fmt(m.dur) : '未记录') +'</dd></div></dl>'+
+      promptBlock(m.prompt)+'<p class="qparams">'+esc([m.res,m.steps ? m.steps+" 步" : null].filter(Boolean).join(" · "))+'</p>';
+  }
+  function syncFiles(files){
+    currentFiles=files;
+    // New shared-queue results must not push an already visible player out of the page.
+    files.forEach(function(f,index){
+      if(fileCards.has(JSON.stringify([f.subfolder||"",f.filename]))) visibleFiles=Math.max(visibleFiles,index+1);
+    });
+    var keep=new Set();
+    files.slice(0,visibleFiles).forEach(function(f){
+      var key=JSON.stringify([f.subfolder||"",f.filename]), card=fileCards.get(key);
+      keep.add(key);
+      if(!card){
+        card=document.createElement("article"); card.className="qitem done"; card.dataset.file=key;
+        card.innerHTML='<div class="file-data"></div><div class="video-actions"><button type="button" class="qprev">播放视频</button><a class="qdl">下载视频</a></div><div class="inline-player" hidden></div>';
+        card.querySelector(".qdl").href=downloadUrl(f); card.querySelector(".qdl").setAttribute("download",f.filename);
+        fileCards.set(key,card);
+        card.querySelector(".qprev").addEventListener("click",function(){
+          var slot=card.querySelector(".inline-player"), btn=card.querySelector(".qprev"), v=slot.querySelector("video");
+          if(!v){
+            v=document.createElement("video"); v.controls=true; v.playsInline=true; v.preload="none"; v.src=viewUrl(f);
+            v.setAttribute("aria-label","播放生成的视频");
+            v.addEventListener("loadedmetadata",function(){
+              if(Number.isFinite(v.duration)) card.querySelector(".clip-duration").textContent=v.duration.toFixed(2)+" 秒";
+            });
+            v.addEventListener("error",function(){
+              if(!slot.querySelector("p")){
+                var error=document.createElement("p"); error.className="muted"; error.textContent="视频暂时无法播放，请检查网络或尝试下载。"; slot.appendChild(error);
+              }
+            });
+            slot.appendChild(v);
+          }
+          slot.hidden=!slot.hidden;
+          btn.textContent=slot.hidden ? "播放视频" : "收起视频"; btn.setAttribute("aria-expanded",!slot.hidden);
+          if(slot.hidden) v.pause(); else {
+            document.querySelectorAll("video").forEach(function(other){if(other!==v)other.pause();});
+            v.play().catch(function(){});
+          }
+        });
+      }
+      var signature=JSON.stringify(f);
+      if(card._data!==signature){
+        var opened=card.querySelector(".prompt-full[open]");
+        card.querySelector(".file-data").innerHTML=fileData(f);
+        if(opened && card.querySelector(".prompt-full")) card.querySelector(".prompt-full").open=true;
+        card._data=signature;
+      }
+      // Do not move an unchanged player: moving media DOM can interrupt playback on phones.
+      var index=files.indexOf(f), at=fileslist.children[index];
+      if(at!==card) fileslist.insertBefore(card,at||null);
+    });
+    fileCards.forEach(function(card,key){if(!keep.has(key)){card.remove();fileCards.delete(key);}});
+    $("more").hidden=files.length<=visibleFiles;
+    if(files.length===0) fileslist.innerHTML='<div class="qempty">还没有视频。写下一个想法，开始第一次创作吧。</div>';
+    else fileslist.querySelectorAll(".qempty").forEach(function(el){el.remove();});
+  }
+  function taskRow(item, index){
+    var pid=item[1], p=graphParams(item[2]), t=tasks[pid]||(tasks[pid]={});
+    t.running=index==null; t.created=(item[3]||{}).create_time;
+    return '<article class="qitem '+(t.running?'running':'queued')+'" data-pid="'+esc(pid)+'">'+
+      '<div class="qtop"><span class="qstate">'+(t.running?'制作中':'排队第 '+(index+1)+' 位')+'</span>'+
+      '<span class="qtime">'+(t.running?esc(phaseOf(t)):'开始后会自动更新进度')+'</span></div>'+
+      promptBlock(p.prompt)+'<div class="qparams">视频时长：'+durationText(p)+(p.res?' · '+esc(p.res):'')+'</div>'+
+      (t.running?'<div class="qbar" aria-hidden="true"><i></i></div>':'')+'</article>';
+  }
+  function syncTasks(running,pending){
+    var items=running.concat(pending), keep=new Set();
+    items.forEach(function(item,index){
+      var pid=item[1], position=index<running.length?null:index-running.length;
+      var html=taskRow(item,position), signature=JSON.stringify([position,graphParams(item[2])]);
+      var card=taskCards.get(pid);keep.add(pid);
+      if(!card || card._data!==signature){
+        var opened=card && card.querySelector('.prompt-full[open]');
+        var focused=card && card.contains(document.activeElement);
+        var holder=document.createElement('div');holder.innerHTML=html;
+        var fresh=holder.firstElementChild;
+        if(opened && fresh.querySelector('.prompt-full')) fresh.querySelector('.prompt-full').open=true;
+        if(card) card.replaceWith(fresh);
+        card=fresh;card._data=signature;taskCards.set(pid,card);
+        if(focused && card.querySelector('summary')) card.querySelector('summary').focus({preventScroll:true});
+      }
+      var at=tlist.children[index];if(at!==card)tlist.insertBefore(card,at||null);
+    });
+    taskCards.forEach(function(card,pid){if(!keep.has(pid)){card.remove();taskCards.delete(pid);}});
+  }
+  async function renderTasks(){
+    if(rendering) return;
+    rendering=true;
+    try {
+      var results=await Promise.allSettled([api("/queue"),api("/h3/files")]);
+      var queueOK=results[0].status==="fulfilled", filesOK=results[1].status==="fulfilled";
+      var countText=[];
+      if(queueOK){
+        var q=results[0].value, running=q.queue_running||[], pending=q.queue_pending||[];
+        syncTasks(running,pending);
+        countText.push(running.length+" 个制作中",pending.length+" 个排队");
+        var queued=new Set(running.concat(pending).map(function(it){return it[1];}));
+        Object.keys(pendingMeta).forEach(function(pid){if(!queued.has(pid)) postMeta(pid);});
+        if(activePid){
+          var pos=pending.findIndex(function(it){return it[1]===activePid;});
+          if(pos>=0) setStatus('<span class="badge queued">排队第 '+(pos+1)+' 位</span>轮到你后自动开始。');
+          else if(queued.has(activePid)) setStatus('<span class="spinner"></span>'+esc(phaseOf(tasks[activePid]||{})));
+        }
+      }
+      if(filesOK){ syncFiles(results[1].value||[]); countText.push(currentFiles.length+" 个视频"); }
+      qhead.textContent=queueOK && filesOK ? countText.join(" · ") : "连接暂时中断，保留已加载内容；会自动重试，也可以点刷新。";
+      tick();
+    } catch(e){
+      qhead.textContent="暂时无法更新列表，已保留当前内容。请稍后点刷新。";
+    } finally { rendering=false; }
+  }
   function tick(){
-    var now=Date.now();
-    tlist.querySelectorAll('.qtime[data-pid]').forEach(function(el){
-      var pid=el.getAttribute('data-pid'); var t=tasks[pid]; if(!t) return;
-      var e2=elapsedOf(t, now), rem=estRemain(t, now);
-      var txt='';
-      if (e2!=null) txt='已用 '+fmt(e2)+(t.isRunning?'':'');
-      if (rem!=null) txt += ' · 预计剩余 ~'+fmt(rem);
-      el.textContent = txt;
-    });
-    tlist.querySelectorAll('.qbar i').forEach(function(bar){
-      var el=bar.closest('.qitem'); var pid=el && el.getAttribute('data-pid'); var t=tasks[pid];
-      if (t && t.value && t.max) bar.style.width = (t.value/t.max*100).toFixed(1)+'%';
+    tlist.querySelectorAll(".qitem.running").forEach(function(el){
+      var t=tasks[el.dataset.pid]; if(!t) return;
+      el.querySelector(".qtime").textContent=phaseOf(t);
+      var bar=el.querySelector(".qbar i");
+      if(bar && t.max) bar.style.width=Math.min(100,t.value/t.max*100)+"%";
     });
   }
+  $("refresh").addEventListener("click",renderTasks);
+  $("more").addEventListener("click",function(){visibleFiles+=6;syncFiles(currentFiles);});
 
-  tlist.addEventListener('click', function(ev){
-    // .qdl(下载,指向 /h3/download,Content-Disposition: attachment)与
-    // .qprev(预览,新标签播放)均保持浏览器默认行为;其余点击展开/收起
-    var el = ev.target.closest('.qitem'); if (!el) return;
-    var pid = el.getAttribute('data-pid');
-    openPids[pid] = !openPids[pid];
-    el.classList.toggle('open', !!openPids[pid]);
-  });
-
-  renderTasks(); connectWS(); refreshGo();
-  setInterval(renderTasks, 5000);
-  setInterval(tick, 1000);
+  function savedImage(ref){return ref ? {name:ref.uploadedName,displayName:ref.name,size:ref.size} : null;}
+  function restoredImage(record){
+    if(!record || typeof record.name!=="string" || !record.name.trim())return null;
+    return {uploadedName:record.name,name:typeof record.displayName==="string" ? record.displayName : record.name.split("/").pop(),size:Number.isFinite(record.size) && record.size>=0 ? record.size : 0,url:null,file:null};
+  }
+  var draftIds=["prompt","prompt-img","prompt-keyframes","sound","seconds","res","steps","seed","deepseek","aidImg","aidFrames","previewPrompt"];
+  function saveDraft(){
+    var draft={pane:activePane, finalPrompt:finalPrompt.value, pendingOpts:pendingOpts,
+      references:selectedRefs.map(savedImage), keyframes:{first:savedImage(frameRefs.first),last:savedImage(frameRefs.last)}};
+    draftIds.forEach(function(id){var el=$(id);draft[id]=el.type==="checkbox"?el.checked:el.value;});
+    try { localStorage.setItem("h3draft",JSON.stringify(draft)); } catch(e){}
+  }
+  document.querySelector(".composer").addEventListener("input",saveDraft);
+  document.querySelector(".composer").addEventListener("change",saveDraft);
+  try {
+    var draft=JSON.parse(localStorage.getItem("h3draft")||"null");
+    if(draft){
+      draftIds.forEach(function(id){if(draft[id]==null)return;var el=$(id);if(el.type==="checkbox")el.checked=!!draft[id];else el.value=draft[id];});
+      switchPane(PANES.includes(draft.pane) ? draft.pane : "text");
+      if(draft.finalPrompt) finalPrompt.value=draft.finalPrompt;
+      var savedRefs=Array.isArray(draft.references) ? draft.references : [];
+      var pending=draft.pendingOpts, pendingNames=[];
+      if(pending){
+        try { pendingNames=referenceNames(pending); }
+        catch(e){ pending=null; showError("上次待确认任务的图片或模式记录无效，请重新准备提示词；文字已保留。"); }
+      }
+      if(pending && !pending.modeVal)pending.modeVal=pendingNames.length ? "Ref2VA" : "T2VA";
+      // Each creation pane owns its selection; only its own pending task can restore it.
+      var savedNames=pending && pending.modeVal==="Ref2VA" ? pendingNames : savedRefs.map(function(ref){return ref && ref.name;});
+      var canRestore=savedNames.length<=MAX_REFERENCE_IMAGES && savedNames.every(function(name){return typeof name==="string" && name.trim();});
+      if(canRestore){
+        selectedRefs=savedNames.map(function(name,index){
+          var info=savedRefs[index] && savedRefs[index].name===name ? savedRefs[index] : {};
+          return {uploadedName:name,name:info.displayName||name.split("/").pop(),size:Number.isFinite(info.size) && info.size>=0 ? info.size : 0,url:null,file:null};
+        });
+      } else if(savedRefs.length){
+        $("ref-error").textContent="有图片尚未上传，无法随草稿恢复。请按原顺序重新选择参考图；文字已保留。";
+      }
+      var savedFrames=draft.keyframes || {};
+      ["first","last"].forEach(function(role){frameRefs[role]=restoredImage(savedFrames[role]);});
+      if(["first","last"].some(function(role){return savedFrames[role] && !frameRefs[role];})){
+        $("frame-error").textContent="有首帧或尾帧尚未上传，无法随草稿恢复，请重新选择；文字和已上传图片已保留。";
+      }
+      if(pending && isFrameMode(pending.modeVal)){
+        ["first","last"].forEach(function(role){
+          var used=role==="first" ? pending.modeVal!=="L2VA" : pending.modeVal!=="I2VA";
+          var name=used ? pendingNames[role==="last" && pending.modeVal==="FL2VA" ? 1 : 0] : null;
+          if(!name)frameRefs[role]=null;
+          else if(!frameRefs[role] || frameRefs[role].uploadedName!==name)frameRefs[role]=restoredImage({name:name});
+        });
+        $("frame-error").textContent="";
+      }
+      if(pending){
+        pending.imageNames=pendingNames;delete pending.imageName;
+        showPreview(pending,draft.finalPrompt||"","已恢复待确认的提示词" + (pendingNames.length ? "和 " + pendingNames.length + " 张已上传图片。" : "。"));
+      }
+    }
+    var restored=JSON.parse(localStorage.getItem("h3active")||"null");
+    if(restored && restored.pid){
+      pendingOpts=null;promptPreview.classList.remove("visible");
+      activePid=restored.pid;busy(true);
+      setStatus('<span class="spinner"></span>正在恢复上次任务的进度…');
+      pollTimer=setInterval(function(){poll(restored.pid,restored.started);},4000);
+      poll(restored.pid,restored.started);
+    }
+  } catch(e){}
+  $("promptImgHint").textContent=aidImg.checked ? "（选填）" : "（请填写描述）";
+  $("promptFramesHint").textContent=$("aidFrames").checked ? "（选填）" : "（请填写描述）";
+  renderRefPreviews(); renderFrames(); renderTasks(); connectWS(); refreshGo();
+  setInterval(function(){if(!document.hidden)renderTasks();},5000);
+  document.addEventListener("visibilitychange",function(){if(!document.hidden){renderTasks();if(activePid)poll(activePid,Date.now());}});
+  setInterval(tick,1000);
 })();
 </script>
 </body>

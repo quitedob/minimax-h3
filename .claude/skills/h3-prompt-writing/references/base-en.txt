@@ -126,7 +126,7 @@ The camera holds a static shot as the runner exits the frame.
 
 Subjects who speak, sing, or produce an off-screen human voice use stable IDs such as `(S1)` and `(S2)`. When multiple already-numbered speakers speak or sing together, use a compound ID such as `(S1,S2)`. A speaker keeps the same ID across shots; characters who never vocalize receive no speaker ID.
 
-When a speaker first appears, provide enough information from the visual and audio context to establish a stable identity, such as character type, age, gender, whether the person is on-screen, pitch, timbre, speaking rate, or accent. Place the speaker's identifying phrase, ID, action, and delivery outside `<d>`. Inside `<d>`, include only the language tag and the actual user-provided spoken content. Preserve every original word and punctuation mark verbatim; do not translate or rewrite them.
+When a speaker first appears, provide enough information from the visual and audio context to establish a stable identity, such as character type, age, gender, whether the person is on-screen, pitch, timbre, speaking rate, or accent. Place the speaker's identifying phrase, ID, action, and prose delivery description outside `<d>`. For ordinary dialogue, place the language tag and actual user-provided spoken content inside `<d>`. If the user supplied performance tags or delivery qualifiers inside the dialogue, preserve them too: do not strip them as HTML or move them merely to enforce the ordinary format. Preserve original words, punctuation, stutters, and intentional elongated vowels; do not translate or silently rewrite them. See Section 6 for community examples and their evidence limits.
 
 ```text
 The young woman with a quiet, breathy voice (S1) says: <d>[English] I get off at the next station.</d>
@@ -220,3 +220,106 @@ overall_soundscape: Fingertips tap the glass before it scrapes across the tablet
 
 non_diegetic_music: A low electronic pulse at a slow tempo, ending immediately after the glass breaks.
 ```
+
+## 6. Community Speech-Performance Cases (2026-09-11)
+
+### 6.1 Provenance and Limits
+
+These cases come from the user's supplied filmmaking excerpts and subsequent tag/example messages in the 2026-09-11 conversation. This is neither an official exhaustive vocabulary nor a local compatibility test. The creator reports a different Ref2VA/FL2VA hybrid setup, 30 steps, and no LoRA. Those results do not establish equivalent behavior on the current Turbo 8-step web workflow, and the examples do not authorize changing that workflow.
+
+Treat the following as literal prompt notation, not HTML. Preserve supplied tags and their positions. When writing new material, use a few relevant cues and concrete acting descriptions rather than stacking every tag. Tag spelling, placement, language, model, and duration may affect delivery; do not promise a particular emotion or recognizable voice.
+
+### 6.2 Notation Actually Present in the Supplied Examples
+
+| Form | Observed context / intended cue, not a measured guarantee |
+| --- | --- |
+| `<phew>` | Appears before “That was close.” in a short standalone excerpt; its placement inside a full `<d>` block was not supplied |
+| `<breath>`, `<inhale>`, `<catches breath>`, `<pants>` | Breathing or breath recovery interleaved with dialogue |
+| `<pause>`, `<long pause>` | Pauses within or at the end of the spoken passage; no exact duration is established |
+| `<stutter>` | Precedes deliberate broken words such as `E-erase` or `wa wanted` |
+| `<chuckle>` | A vocal reaction placed between phrases or after a line |
+| `<i>...</i>` | Emphasis around particular words inside dialogue; preserve both delimiters |
+| `[English, singing]`, `[English, crying]` | Delivery qualifiers placed in the bracketed header immediately after `<d>` |
+| `[Hum]` | Humming cue used with written syllables; it is not a spoken-language name |
+
+For example, the supplied singing line uses `<d>[English, singing] too maaake meee siiiing?</d>`. The elongated vowels are performance information, not spelling errors to correct. The supplied humming notation is `<d>[Hum] daaaa-daa-da-da-da-daaaa.</d>`.
+
+### 6.3 Case: One Short Spoken Line in an Eight-Second T2VA Clip
+
+This is a newly written adaptation demonstrating structure, not a reproduced or tested generation. Use one continuous close-up, a brief breath, one short line, and a reaction. The duration budget includes silence and acting; `<pause>` is not an exact stopwatch command.
+
+```text
+integrated_multimodal_description: [Shot 1] Live-action, an eight-second continuous close-up frames a fictional adult performer from the shoulders up against a plain white studio background. Soft key and fill light preserve natural skin texture, with a subtle rim light separating the shoulders from the background. The camera holds a static shot. During the opening moment, the performer lets the shoulders relax and takes a small breath. Looking into the lens, the performer with a quiet, slightly breathy voice (S1) says, <d>[English] <breath> You're here. <pause> I'm glad.</d> A restrained smile follows, and the final moment holds on the expression without another line or cut.
+
+overall_soundscape: Quiet studio room tone surrounds the voice, with a light breath and a faint clothing rustle. No competing impact sounds or loud ambience.
+
+non_diegetic_music: N/A
+```
+
+Do not compress the user's much longer dramatic monologue into this example. When a supplied line cannot reasonably fit the requested duration, resolve whether to shorten the line or split it into separate clips with the user; do not silently change their words or the selected seconds.
+
+### 6.4 Cases: Singing, Crying, and Humming Are Separate Performances
+
+The snippets below illustrate distinct deliveries, not a sequence to pack into one eight-second video. In Ref2VA, insert a selected snippet into `detailed_description` while retaining the six required sections and valid subject definitions. `<Subject 1>` must already identify a subject in an actual supplied asset; otherwise use an ordinary character description as in the T2VA case.
+
+```text
+<Subject 1> (S1) lifts the chin and sings in a resonant operatic voice with sustained open vowels, <d>[English, singing] too maaake meee siiiing?</d> The mouth shape follows the held vowels; the camera remains still.
+```
+
+```text
+<Subject 1>'s eyes begin to water and the lower lip trembles. <Subject 1> (S1) tries to speak through uneven breaths, <d>[English, crying] <pants> I... <stutter> I wanted you to stay. <catches breath></d> The shoulders settle into a small sob after the words.
+```
+
+```text
+<Subject 1> (S1) hums softly with relaxed lips, <d>[Hum] daaaa-daa-da-da-da-daaaa.</d> Leave quiet space around the voice without adding spoken words or an accompanying score.
+```
+
+The crying line above is newly authored, not a transcription of the community clip. If a user provides their own line, retain that line instead. Descriptions of tears, posture, gaze, mouth movement, breath, and voice should support the intended delivery; do not replace all acting direction with `[crying]` alone.
+
+Only say the performer follows the melody of `<Audio 1>` when an actual audio asset was supplied, is supported by the selected workflow, and is defined as a reference. Otherwise the humming example describes a generated melody, not reproduction of a missing recording. Similarly, do not copy “The shot begins from the source <Video 1>” into a text-only or image-reference request without a real source video. The web page's reference-image input does not itself supply video or audio references.
+
+### 6.5 Display and Preservation
+
+Keep `<d>`, `<i>`, `<breath>`, `[English, crying]`, intentional repeated vowels, and user-chosen pause positions intact in the prompt text passed to the model. In an HTML preview, render that text safely as text rather than interpreting tags; HTML escaping for display must not become literal `&lt;...&gt;` in the submitted prompt. Unknown tags are not automatically verified or invalid: preserve a user's explicit notation and state uncertainty when discussing expected results. Do not add closing tags to standalone cues such as `<breath>` merely because they resemble XML.
+
+### 6.6 Follow-up Tag Examples Supplied by the User
+
+The intended effects below are community claims, not local measurements. Keep paired forms paired where supplied; do not convert standalone cues into XML elements. In particular, the user reports that omitting the closing lip-smack tag can move the sound to the sentence ending. Preserve that distinction without promising the effect.
+
+| Literal cue | Intended delivery | User-supplied example |
+| --- | --- | --- |
+| `<pause>` | Short pause | `Okay, so. <pause> This is just me talking.` |
+| `<long pause>` | Longer pause | `I mean... <long pause> I don't even know.` |
+| `<breath>` | Breathing sound | `And then... <breath> it just happened.` |
+| `<inhale>` / `<exhale>` | In / out breath | `<inhale> Alright, let's do this.` |
+| `<catches breath>` | Out of breath | `Wait... <catches breath> hold on a sec.` |
+| `<deep breath>` | Calming breath | `<deep breath> Okay. I can do this.` |
+| `<i>word</i>` | Emphasize 1–4 words | `I was <i>not</i> expecting that.` |
+| `<whisper>…</whisper>` | Whisper | `<whisper> Don't tell anyone this.</whisper>` |
+| `<humming>…</humming>` | Hum a tune | `<humming> da-da-da-beautiful-day.</humming>` |
+| `<laughs>` / `<chuckle>` | Laugh | `That's... <laughs> that's actually funny.` |
+| `<sighs>` | Sigh | `<sighs> I really tried.` |
+| `<uh>` | Filler / hesitation | `So, like... <uh> what was I saying?` |
+| `<stutter>` | Broken words | `<stutter> I ca can't believe that.` |
+| `<gasp>` | Sharp intake of breath | `<gasp> Oh my God.` |
+| `<coughs>` | Cough | `<coughs> Sorry, one sec.` |
+| `<clears throat>` | Throat clear | `<clears throat> So anyway...` |
+| `<sniff>` | Sniff | `<sniff> It's just... really sad.` |
+| `<smacks lips></smacks lips>` | Lip smack at this position | `<smacks lips></smacks lips> Okay.` |
+| `<pant>` / `<pants>` | Panting | `Run... <pants> run now!` |
+| `<softer>` | Quieter delivery | `<softer> I don't think I can say it.` |
+| `<mhm>` | Agreement sound | `Yeah, <mhm> exactly.` |
+| `<phew>` | Relief | `<phew> That was close.` |
+
+## 7. Timed Action and Single-Take Continuity
+
+Use these checks for a requested action timeline, not as a mandatory format for every prompt. The user's five-second rooftop fight in `action-continuity.md` is a planning example with unresolved issues, not a validated generation or a prescription for all five-second clips.
+
+- Establish stable scene anchors, subject appearance and initial screen positions. Distinguish **position**, **facing direction**, **travel direction**, and **gaze**. Prefer a subject's name over an ambiguous pronoun when two actors interact. Keep clothing, colors, props and identities attached to the correct actor.
+- A single take has only `[Shot 1]`. Describe beat intervals inside that shot (for example, “During 0.0–1.2 seconds, …”); do not turn each beat into `[Shot 2]` or a new camera angle. Explain a camera move in prose. If the user supplied `[Truck right]` or `[Push in]`, preserve the cue and its meaning without claiming it is a guaranteed control token.
+- For each beat track the starting state, actor's action, target/contact point, resulting state and physical sound. Overlapping actions may share an interval, but setup must precede its consequence. A taut cable, a released hand, a crossed screen position or a broken wall must have a visible cause and persist into the following beat. Do not teleport an actor or silently reverse the camera axis to repair an impossible direction.
+- Fit the chain into the selected seconds, including setup, travel, contact and reaction; timestamps are planning targets, not frame-accurate model controls. When no detailed choreography was supplied, favor one readable main action and its consequences. When a detailed chain was supplied, preserve its intent and flag overload: offer an explicitly labelled simplified alternative or ask which beats are essential. Do not silently remove a key action, stretch five seconds to eight, add cuts to a single take, or change sampling steps to hide a timing problem.
+- Tie a sound to its visible source at the same event: cable tension when the cable tightens, impact on contact, debris after breakage. Check separately supplied sound timestamps against the visual beats; do not keep conflicting clocks or move a hard user-specified cue without approval. Put localized effects in the timeline, continuous ambience in `overall_soundscape`, and `N/A` in `non_diegetic_music` when no score is requested. “No dialogue” does not mean silence.
+- Check the ending against restrictions. “Hold the framing” need not mean frozen actors; describe continuing recovery, breathing, cloth, rain or drifting smoke when a frozen standoff is forbidden. A crouching actor and an actor buried in rubble do not automatically face one another: state the visible body/head orientations, or describe only what the ending actually establishes.
+
+The final model prompt keeps the existing three-field or six-field structure. The planning table, conflict notes and optional alternatives are for the user/author, not extra model fields. In an automated rewrite-only interface, apply the same continuity checks using the supplied material; avoid inventing missing references or changing explicit constraints. If an unresolved hard conflict prevents a faithful prompt, it needs user review, not an unannounced repair.
