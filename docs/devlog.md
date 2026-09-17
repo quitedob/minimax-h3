@@ -948,3 +948,211 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - 实读核心版本仍为 **0.30.0**，不是用户资料假定的 v0.35.0。未升级/安装任何节点，未接入无限续接、音频参考、Full Previous Tail 或 AudioRefine；帮助不声称这些能力已可用，也不宣称首尾图逐像素无损或长链声音稳定。
 - 源码及运行目录 HTML/Python 分别补丁同步且文件摘要一致。保留 Turbo 8 步、原加速链/模型/时长/尺寸；8188 未重启、SSH 未操作，没有运行测试/语法检查/浏览器/API/网络/GPU或生成验证。下次由用户启动服务后加载，未声称公网已验证。
 - 详细合同、源码依据与未验证范围：[首尾帧与帮助接入记录](video-keyframes-help-20260911.md)。
+
+## 二十二、停止 YOLO 训练、接回 SSH 通道（2026-09-12）
+
+解除 §20.1 的“训练期间禁测停服”状态：用户要求停止 YOLO 训练并开启 SSH 通道。
+
+### 22.1 停止 YOLO 训练
+
+- 目标作业来自另一项目 `F:\python\yolo-sod`，由 `benchmark/analysis/supervise_training.py` 托管（`--out benchmark/results/lookahead_launch_20260911_000950/formal_job`），训练脚本 `train/v12/train_v12_lite_m_c3k2_batch3_fixed.py`，模型 `yolov12-sod-fusion-v6-lite-m-c3k2-lookahead-p4.yaml`，`epochs=1000 / batch=3 / imgsz=640`。
+- 停止时状态：始于 2026-09-11 00:18，进度 **epoch 191/1000（当轮 51%，1105/2157 it）**；`weights/` 内 `last.pt` 为 epoch 190 结束所写（12:07），每轮均有 `epochN.pt` 快照。
+- 处置：只杀训练进程（PID 42416 及其实例 PID 8204）。托管链（8112 → 39548）检测到子进程退出后自行结束，并写下 `formal_job/completion.json`（`returncode 4294967295`，即强制终止）。
+- 复查：所有 `yolo-sod` python 进程已消失；GPU 从 9816 MiB / 29% 降到 **1322 MiB / 3%**。代价是丢失 epoch 191 已跑的约一半（≤ 一轮，`last.pt` 之前的轮次都已落盘）。
+- 未改动 yolo-sod 的任何源码、配置或权重文件。
+
+### 22.2 SSH 通道实况：进程本来就在，缺的是本机服务端
+
+- 本机 `ssh.exe` **PID 22148 已经存活**：`-N -R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150`，`ServerAliveInterval=30 / ExitOnForwardFailure=yes`。
+- 云端 `/etc/caddy/Caddyfile` 的 upstream 是 **`127.0.0.1:8188`**（不是 §18.5 记录的 18188），与上述隧道映射一致；云端 `127.0.0.1:8188` 由 sshd（pid 3179865）监听，且存在来自本机公网 IP 的已建立 SSH 会话。
+- 因此外网 502 的原因不是通道缺失，而是**通道本机端 127.0.0.1:8188 没有服务**（§20.1 停服后一直未起）。按生产稳定栈启动本机 8188：`ComfyUI_sage3_py312/start_web_server.ps1`（`COMFY_SAGE3=0`，Turbo 8 步 + SolAttn + EasyCache，SDPA fallback，无 Sage2/Sage3）。
+
+### 22.3 验证（本轮无生成任务）
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `http://127.0.0.1:8188/video` | **200**（启动约 50s 后就绪） |
+| 云端 → 隧道 → 本机 `/video` | **200** |
+| 公网 `https://video.geekq.xyz:552/video` | **200** |
+| 公网 `https://video.geekq.xyz:552/h3/files` | **200** |
+| `/queue` | `queue_running: [] / queue_pending: []` |
+
+- 启动日志无 Sage3 行，节点含 `h3_web_queue`、`ComfyUI-MiniMax-H3-Turbo`、`ComfyUI-SolAttn_triton`。未提交任何生成任务，故未产生新的出片质量/速度数据，也不能据此宣称端到端出片已复测。
+
+### 22.4 发现的不一致（未改，待确认）
+
+- 启动脚本 `F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat` 仍映射 **`-R 127.0.0.1:18188:127.0.0.1:8188`**，而云端 Caddy upstream 现为 **8188**。若登录计划任务 `ComfyUI Cloud Tunnel` 拉起该脚本，新隧道会绑到云端 18188 → 外网仍 502。
+- 当前在跑的隧道是 8188 版本，所以现在没问题；这属于**潜在的不一致**。要么把 launcher 改回 8188，要么把 Caddy 改回 18188——本轮未动任何一侧，留待用户决定。
+
+## 二十三、网页时长选项扩到 5–15 秒（2026-09-12）
+
+用户要求把 `/video` 的时长上限从 8 秒提高到 15 秒。**改动只在前端**，后端与核心节点本来就已经支持到 15 秒。
+
+### 23.1 为什么后端不用改
+
+- `__init__.py` 的 `/h3/prompt` 帧数校验一直是 **`124 <= frame_count <= 362` 且 `frame_count % 17 == 5`**（第 425-427 行），即 5.17–15.08 秒，本来就没有卡在 8 秒。
+- 核心节点 `MiniMaxH3ImageToVideo.length` 的 tooltip 原文：`snapped up to the model's 17k+5 grid (124 = ~5s; trained range is ~124-362, longer is untested)` —— **362 帧就是模型训练区间上界**，所以 15 秒（15.08s）是"刚好用满"而不是超纲；节点自身 min/max 为 5/3600，不构成限制。
+- 因此本次只改了 `web/index.html` 里两处硬编码的上限：select 选项、`secondsFor()` 的 `Math.min(8, …)` 钳位。
+
+### 23.2 改动清单（`comfyui_download/h3_web_queue/web/index.html`）
+
+| 位置 | 改动 |
+|---|---|
+| 时长 select | 增加 9–15 秒共 7 个选项（原先 5–8） |
+| `secondsFor()` | `Math.min(8, Math.max(5,n))` → `Math.min(15, …)`（这是真正卡住 8 秒的地方） |
+| `framesForSeconds()` 注释 | 说明 5–15 秒与 362 帧上限 |
+| 帮助文案 4 处 | 「约 5–8 秒」等改为 5–15，并补一句 362 帧约 15.08 秒、时长越长等待越久 |
+| 设置区提示语 | 补「视频越长、清晰度越高，等待越久」 |
+
+- 文件同步到运行实例 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/web/index.html`，两处 SHA256 一致（`90a5dbc5…`）。按 §17.8，HTML 每次请求重读，**无需重启服务**即生效。
+- 未改后端、未改工作流模板、未改步数（仍 4–8 / 默认 8）、未改 SolAttn/EasyCache/Turbo 参数。
+
+### 23.3 秒数 → 帧数映射（用页面同一算法复算，11 项全部合法）
+
+| 选项 | 帧数 | 实际时长 | 选项 | 帧数 | 实际时长 |
+|---|---:|---:|---|---:|---:|
+| 5s | 124 | 5.17s | 11s | 260 | 10.83s |
+| 6s | 141 | 5.88s | 12s | 294 | 12.25s |
+| 7s | 175 | 7.29s | 13s | 311 | 12.96s |
+| 8s | 192 | 8.00s | 14s | 328 | 13.67s |
+| 9s | 209 | 8.71s | 15s | **362** | **15.08s** |
+| 10s | 243 | 10.12s | | | |
+
+- 落网格误差最大 0.35s（17 帧 = 0.708s 的半格），选项标签只是近似值，卡片上的「视频时长」按 `round(length/24)` 显示。
+- `/h3/prompt` 会把精确秒数写给 AI（`duration 15.083 seconds`、最后一帧在 15.042s），与标签并用。
+
+### 23.4 10 秒及以上禁用 720p（用户要求：会爆显存）
+
+用户直接给出约束：**≥10 秒选 720p 会超显存、跑不出来**。前端加规则，按**所选秒数**判定（10/11/…/15 全部锁定为 480p，5–9 秒仍可用 720p）。
+
+| 改动 | 说明 |
+|---|---|
+| `RES_MAX_SECONDS_720 = 9` | 唯一的阈值常量；`secondsFor() > 9` 即 10 秒及以上 |
+| `resFor()` | 取实际生效的分辨率：超限时把 720p 降级成 480p |
+| `syncResolution()` | 禁用 `#res` 的 720p 选项、把 select 拨回 480p、在 `#resNote` 显示原因；低于 10 秒时恢复 |
+| `dimsFor()` | 改为走 `resFor()`，**提交路径（工作流 width/height）自动跟着降级**，不依赖用户手动改 |
+| `refreshGo()` | 每次先 `syncResolution()`，所以提示条永远显示降级后的「标准」 |
+| 帮助文案 | `seconds` / `resolution` 两条都写明 10 秒及以上不能选高清 |
+
+- 待确认预览（`pendingOpts`）在点击时就用 `dimsFor()` 冻结，本来就是降级后的值；确认阶段无法改设置，不存在"改了秒数但提交旧分辨率"的窗口。
+- 这是**前端规则**，不是服务端硬校验：`/h3/prompt` 不收分辨率参数，工作流由浏览器提交，直接手搓 API 提交 720p+长片仍能绕过——与既有的公开 API 设计一致，本次未加服务端拦截。
+- 阈值按"选项秒数"而非帧数：9 秒实际是 209 帧（8.71s）仍允许 720p，10 秒是 243 帧（10.12s）起锁定 480p。若 209 帧 @720p 实测也不稳，需要再下调这个常量。
+
+### 23.5 验证范围（明确未做的事）
+
+- 已验证：页面源码改动、两处副本 SHA 一致（`3136b9ee…`）、`GET /video` 实际返回 11 个选项且钳位为 15、11 项映射在 `/h3/prompt` 校验内；抽出内联 JS 过 `node --check` 语法通过。
+- **已用真实浏览器验证 UI 行为**：8 秒 + 720p 正常；切到 12 秒后 720p 选项变灰、select 自动回到 480p、提示语出现；切回 8 秒后 720p 恢复可选。提示条在 6 秒显示「高清」、12 秒显示「标准」，说明降级确实生效到提交参数。
+- **未验证**：没有提交任何 10 秒以上的生成任务。本栈实际跑通过的最长是 **240→243 帧（10.1s，约 16 分钟，§16.13）**——注意那条正是 **480p**；362 帧约为其 2.9 倍 token（按 124 帧 15441、243 帧 30509 线性外推约 4.5 万 token），**耗时与显存均未实测**，不能据此宣称 15 秒 480p 可稳定出片。上线前建议先跑一条 15 秒验收。
+
+---
+
+## 二十四、TRELLIS.2 原生 3D 生成落地（2026-09-16）
+
+为 H3 视频之外增加**独立的 3D 生成能力**。起点是"几个大文件夹哪个不需要"这个清理问题，终点是原生 Trellis.2 在本机跑通。全程**不动生产 8188、不动 85 GB H3 共享模型库**。
+
+### 24.1 一个被推翻的判据：判"可删"不能只看生产用不用
+
+用户问 `comfyui_download/`、`ComfyUI_windows_portable/`、`ComfyUI_windows_portable_torch211_flash_test/` 中哪个不需要。
+
+- 我的初判：flash_test 副本可删 —— 依据是 §9–11 已判定 FlashAttention 不替换生产（组合链热启动反而慢 2.15 s）。
+- **用户纠正**：该副本是本机**唯一能跑 flash-attn 的运行时**（4080 上是 `flash_attn-2.8.3+cu130torch2.9.1-cp312` 对 torch 2.10 的 ABI 墙；本机 `flash_attn 2.9.0` 与 torch 2.11.0+cu130 精确匹配），且它的用途是 **3D 生成**，不是 H3。
+- 结论：**保留**。我漏掉的不是事实，是维度 —— "生产用不用"不等于"还有没有别的业务线要用"。
+
+### 24.2 模型目录解链/复链实况（含一次失败得恰到好处的操作）
+
+- 原 `flash_test/ComfyUI/models` 是指向 85 GB H3 共享库的**目录符号链接**。用 `rmdir` 解链（只删重解析点）：共享库仍 70 个文件，四个关键权重字节数逐一核对未变（`minimax_h3_fl2va_pruned_fp8_scaled` 20,958,205,608；`qwen3vl_32b_..._nvfp4_awq` 15,687,142,551 等）。
+- 我用 `mklink /D` 复链**失败**：git-bash 把 `/D` 当路径吞掉，报"无效语法"。**这个失败是对的** —— 该目录随后被放入 4 个 TRELLIS 权重，它应当是**独立目录**，不该再指回 H3 库。
+
+### 24.3 路线选择：原生 vs visualbruno（wheel 矩阵核查）
+
+手上的 4 个权重：`trellis_2_int8_convrot` 5,253,048,192 / `trellis_2_shape_vae_bf16` 1,095,844,024 / `trellis_2_texture_vae_bf16` 948,461,364 / `dino_v3_vit_l` 1,212,559,776。
+
+- 它们的 sha256 与 HF `Comfy-Org/TRELLIS.2`（官方仓库，`base_model: microsoft/TRELLIS.2-4B`，15.9 万下载）**逐字节一致**，目录结构也逐个对上 → 这是**原生 ComfyUI** 的官方料。**int8 是官方的**，不是替补。
+- `visualbruno/ComfyUI-Trellis2` 走不通：它要 `microsoft/TRELLIS.2-4B/ckpts/` 九组 bf16 分片（约 13.6 GB），现有文件一个都用不上；且 `nodes.py:28-35` 顶层**无条件**导入 `cumesh / o_voxel / nvdiffrast / flex_gemm`，而上游 `wheels/Windows/` 只有 **Torch270 / Torch280 / Torch2100**（无 torch 2.11）。
+- 原生路线不需要任何 CUDA 扩展：`comfy_extras/nodes_trellis2.py` 只导入 `comfy_api.latest`、`comfy.ldm.trellis2.*`、`comfy_extras.nodes_mesh_postprocess`、`torch`；`comfy/ldm/trellis2/flexgemm.py` 是 ComfyUI 自带的纯 PyTorch 稀疏卷积。模型走 `comfy.ldm.modules.attention.optimized_attention`，环境里的 flash-attn 自然生效。
+- **版本**：原生支持自 **v0.34.0** 起（v0.33.0 无此文件）。但 0.34→0.35 之间 `nodes_trellis2.py` 从 35 KB 长到 41 KB，其中一个提交是 **2026-09-03 "Lower peak trellis workflow vram and ram usage"** —— 对 16 GB 卡关键，0.34.0 **不含**。故选最新 release **v0.36.0（2026-09-15）**。
+
+### 24.4 环境置换与依赖
+
+宿主为可弃试验副本 `ComfyUI_windows_portable_torch211_flash_test`（py3.13.14 / torch 2.11.0+cu130 / flash_attn 2.9.0 / triton-windows 3.7.1.post27）。
+
+- 旧树 0.30.0 改名 `ComfyUI_bak_030`，放入 v0.36.0，运行时目录（`models/ custom_nodes/ input/ output/ user/ extra_model_paths.yaml`）按名搬回。
+- **坑**：ComfyUI 的 tag 压缩包**自带 `models/ input/ output/ custom_nodes/` 骨架目录**，直接 `mv` 旧目录进去会变成 `models/models`、`input/input` 这类嵌套。必须先把骨架合并或清掉再搬（本次是发现后逐个拍平）。
+- 依赖 dry-run 确认只动 8 个包：`comfyui-frontend-package 1.48.7→1.52.7`、`comfyui-workflow-templates 0.11.27→0.11.62`（含 `_json 0.1.27→0.1.85`）、`comfyui-embedded-docs 0.5.9→0.5.11`、`comfy-kitchen 0.2.26→0.2.34`、`comfy-aimdo 0.4.11→0.5.3`。**torch / torchvision / torchaudio / flash_attn / sageattention / triton-windows 一个都没动**（这是硬性判据）。
+- **关键点**：旧 `comfy-kitchen 0.2.26` 缺 `AsymW4A8Int8Layout`，而 0.36 的 `comfy/quant_ops.py` 无条件导入它 —— 不升级则 `_CK_AVAILABLE=False`，**int8 的 Trellis.2 根本加载不了**。这一步不是可选。
+
+### 24.5 权重目录与工作流
+
+权重按官方结构同卷改名摆放（不复制 8.3 GB）：
+
+```
+models/diffusion_models/trellis_2_int8_convrot.safetensors
+models/vae/trellis_2_{shape,texture}_vae_bf16.safetensors
+models/clip_vision/dino_v3_vit_l.safetensors
+```
+
+工作流是**手写 API 图**（后端没有 UI→API 转换器）：
+
+- 连线拓扑与 widget 取值**全部取自官方模板** `3d_pixal3d_trellis2_image_to_model.json`（随 pip 包落在 `comfyui_workflow_templates_json/templates/`），但删去 Pixal3D / MoGe / BiRefNet 三组本机没有的模型分支，以及两个 `ComfySwitchNode`（模板里该 switch 置 `true` 才走 Trellis.2，默认 `false` 走 Pixal3D）。
+- 节点签名以**运行中的 `/object_info`** 为准：18 个必需节点全部注册（`Trellis2Conditioning/ShapeStage/UpsampleStage/TextureStage`、`VaeDecode{Shape,Texture,Structure}Trellis*`、`EmptyTrellis2LatentStructure`、`ImageCropToMask`、`PaintMesh`、`SaveGLB`、`CFGOverride`、`RescaleCFG`、`ModelSamplingSD3` 等）。
+- 关键取值：结构阶段 `CFGOverride(cfg=1, 0.667→1)` → `RescaleCFG 0.7` → `ModelSamplingSD3 shift=5`，KSampler 12 步 / cfg 7.5 / euler+normal；形状阶段 `CFGOverride(0.769→1)` → `RescaleCFG 0.5`，20 步；高清阶段同链 12 步 / euler+simple；`Trellis2UpsampleStage.target_resolution=1536`；**贴图阶段用裸 UNET**（不过 CFG 链）12 步 / **cfg 1.0**。
+- 文件：`workflows/trellis2_i2m_shape.json`（只出形状）、`workflows/trellis2_i2m_textured.json`（完整）。提交脚本 `ComfyUI_windows_portable_torch211_flash_test/submit_8199.py`（**端口 8199**；`comfyui_download/submit_prompt.py` 硬编码生产 8188，不可复用）。
+
+### 24.6 实测结果
+
+启动参数：`--port 8199 --disable-all-custom-nodes --lowvram --reserve-vram 0.5`。`--lowvram` 取自 4080 机器 2026-09-12 serving audit 里 `low_vram=true` 跑通 TRELLIS.2 的先例（同 16 GB 卡）；该 audit 还用 `sdpa` 后端跑通，说明 **flash-attn 只是优化项而非必需**（`--use-pytorch-cross-attention` 可强制回退）。
+
+| 运行 | 提交 ID | 服务端耗时 | 产物 | 三角面 | 顶点属性 |
+|---|---|---:|---|---:|---|
+| 形状分支（冷，含模型加载） | `dfa37136` | **112.57 s**（API 侧 115.2 s） | `3d/trellis2_shape_00001_.glb` 264,130,396 B | 14,728,506 | `POSITION` |
+| 完整带贴图（热） | `9a0ceff4` | **62.64 s**（API 侧 65.3 s） | `3d/trellis2_textured_00001_.glb` 351,515,668 B | 14,728,506 | `POSITION + COLOR_0` |
+
+- 模型加载正常：日志 `Model Trellis2 prepared for dynamic VRAM loading. 5004MB Staged`；显存峰值 **10.3 GB / 16.3 GB**，`--lowvram` 下未 OOM。
+- 结构 12 步（≈5 s）→ 形状 20 步（≈5 s）→ 高清 12 步（7.72 s/it，≈93 s）→ 贴图解码/上色。**贴图阶段明显慢于形状阶段**，是当前墙钟主要来源。
+- 贴图以**逐顶点色 `COLOR_0`** 烘焙（`materials=1`、`textures=0`），这是 `PaintMesh` 的方式，不是缺贴图。
+- 两次运行（形状分支与完整分支）产出的形状**文件等大、面数相同**，同 seed 可复现。
+
+### 24.7 验证方式（沿用本项目铁律：不看 `status_str`）
+
+- **主判据**是磁盘 mtime 差集：`output/3d/trellis2_shape_00001_.glb` mtime `2026-09-16 23:56:03`、`trellis2_textured_00001_.glb` mtime `23:57:34`，均晚于各自提交时刻；提交前 `output/3d/` 为空。
+- GLB 用**纯 stdlib** 解包校验：`magic=b'glTF'`、`version=2`、`meshes=1`、面数 10⁵–10⁶ 量级、包围盒落在合理范围（`[-0.500,-0.497,-0.065] → [0.499,0.492,0.074]`，X/Y 已归一化）。
+- 日志交叉检查：无 traceback / OOM / NaN；`Mask for the image is empty` 计数 **0**（示例图带真 mask，`ImageCropToMask` 未走整幅裁剪回退）。
+
+### 24.8 生产未动的证明
+
+| 检查 | 变更前 | 变更后 |
+|---|---|---|
+| `ComfyUI_sage3_py312/comfyui_version.py` | 131 B / mtime 1787648546 | 同 |
+| `ComfyUI_windows_portable/ComfyUI/comfyui_version.py` | 131 B / mtime 1785725717 | 同 |
+| 8188 监听 PID | 18436 | 18436 |
+| 共享模型库文件数 | 70 | 70 |
+| H3 权重大小/日期 | fl2va / ref2va 20,958,205,608（2026-08-05） | 同 |
+
+### 24.9 明确未做/未验证
+
+- **没有做目视渲染检查**。结构与统计指标正常，但包围盒 **Z 向偏薄**（`-0.065 ~ +0.074`，而 X/Y 为 ±0.5）—— 对该输入（"viking wolf rune axe"，板状斧符）可能本就如此，也可能是形状阶段欠收敛，**未确认**。
+- 面数 14.7M 对预览/减面/打印都过大，**减面未做**。
+- 只测了**一张**官方示例图，未做多图/多题材回归；也未测 `target_resolution` 降到 1024 的速度与画质权衡。
+- 未验证该环境在 0.36.0 下是否仍能承载 §9–11 的 H3 FlashAttention 对照实验（0.36 重构了 `comfy/ldm/minimax/model.py`）。该环境本就是可弃副本，H3 相关一律回 `ComfyUI_sage3_py312`。
+
+### 24.10 复现与回滚
+
+```bash
+S=/f/python/h3/ComfyUI_windows_portable_torch211_flash_test
+cd "$S"
+./python_embeded/python.exe -s ComfyUI/main.py --port 8199 --listen 127.0.0.1 \
+  --disable-all-custom-nodes --lowvram --reserve-vram 0.5
+./python_embeded/python.exe -s submit_8199.py F:/python/h3/workflows/trellis2_i2m_textured.json
+```
+
+- 回滚代码：`mv ComfyUI ComfyUI_036_attempt && mv ComfyUI_bak_030 ComfyUI`，再把运行时目录搬回。
+- 回滚依赖：`pip install comfy-kitchen==0.2.26 comfy-aimdo==0.4.11 comfyui-frontend-package==1.48.7 comfyui-workflow-templates==0.11.27 comfyui-embedded-docs==0.5.9`，与 `pip_before_trellis2.txt` 对 diff 应为空。
+- 停服只停 8199 的 PID，**不要碰 8188**。
+
+### 24.11 教训
+
+1. **"生产用不用"不是判断一个环境/目录去留的唯一维度。** 漏掉"某条业务线只有它能跑"这一维，就会给出错误的删除建议。
+2. **第三方节点的"要装什么"要读到 import 层。** `nodes.py:28-35` 的顶层无条件导入，决定了整条路线是否可行 —— 这比读 README 的安装说明更早、更硬。
+3. **官方包与第三方节点可能互不通用。** 同一模型的不同封装对应**完全不同的权重目录结构**（`ckpts/` 九组 bf16 vs `diffusion_models + vae + clip_vision`），先核对 sha256 再谈方案。
+4. **发布包的骨架目录会咬人。** `mv 旧目录 新目录` 在目标已存在同名目录时会静默嵌套，事后要靠 `ls` 才发现。
+5. **"刚好够用"的版本可能缺关键修复。** v0.34.0 是引入 Trellis.2 的最低版本，但 9-03 那版降显存提交才是 16 GB 卡的可用性前提 —— 定版本要查提交史，不能只看"首次支持"。
