@@ -1,0 +1,102 @@
+[
+  {
+    "name": "Eight-second AI preview, editable final prompt, single submission, success unlock",
+    "pass": true,
+    "elapsedMs": 535
+  },
+  {
+    "name": "AI direct-submit path includes duration without an in-graph AI bypass",
+    "pass": true,
+    "elapsedMs": 363
+  },
+  {
+    "name": "AI off leaves original prompt and acting tags unchanged",
+    "pass": true,
+    "elapsedMs": 389
+  },
+  {
+    "name": "Reference-image AI receives eight seconds and treats model descriptions as text",
+    "pass": true,
+    "elapsedMs": 386
+  },
+  {
+    "name": "Image workflow AI=true preview=true preserves prompt and duration",
+    "pass": true,
+    "elapsedMs": 538
+  },
+  {
+    "name": "Image workflow AI=true preview=false preserves prompt and duration",
+    "pass": true,
+    "elapsedMs": 388
+  },
+  {
+    "name": "Image workflow AI=false preview=true preserves prompt and duration",
+    "pass": true,
+    "elapsedMs": 482
+  },
+  {
+    "name": "Image workflow AI=false preview=false preserves prompt and duration",
+    "pass": true,
+    "elapsedMs": 401
+  },
+  {
+    "name": "Reload restores editable pending draft without repeating AI or submitting",
+    "pass": true,
+    "elapsedMs": 359
+  },
+  {
+    "name": "Keyboard switches tabs and reaches image upload without a mouse",
+    "pass": true,
+    "elapsedMs": 214
+  },
+  {
+    "name": "Empty idea cannot invoke AI or submit work",
+    "pass": true,
+    "elapsedMs": 209
+  },
+  {
+    "name": "AI failure is recoverable and never silently submits the original idea",
+    "pass": true,
+    "elapsedMs": 342
+  },
+  {
+    "name": "Back from preview preserves final editing and unlocks video settings",
+    "pass": true,
+    "elapsedMs": 384
+  },
+  {
+    "name": "Empty final prompt cannot submit a generation task",
+    "pass": true,
+    "elapsedMs": 459
+  },
+  {
+    "name": "mobile-320: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 252
+  },
+  {
+    "name": "mobile-390: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 246
+  },
+  {
+    "name": "desktop-1440: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 323
+  },
+  {
+    "name": "Inline video and gallery DOM survive periodic refresh",
+    "pass": true,
+    "elapsedMs": 5525
+  },
+  {
+    "name": "Failed metadata remains pending and retries successfully",
+    "pass": true,
+    "elapsedMs": 5232
+  },
+  {
+    "name": "Queue or gallery failure shows a recoverable visible state",
+    "pass": true,
+    "elapsedMs": 188
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Eight-second AI preview, editable final prompt, single submission, success unlock",
+    "pass": false,
+    "elapsedMs": 12794,
+    "error": "Completed generation did not unlock the main button"
+  }
+]

@@ -1,8 +1,9 @@
 """Triton Sol-Attn forward kernels.
 
 ``_forward_ptr`` reads strides directly and is the default. ``_forward`` uses
-TensorDescriptor loads (TMA on SM90+), which address strided inputs directly, so
-neither path copies q/k/v unless the layout breaks TMA's alignment rules.
+TensorDescriptor loads (TMA on SM90+) but needs contiguous, block-padded q/k/v,
+so it copies its inputs; below SM90 Triton emulates descriptors at 2.4-3.6x the
+cost. ``sol_attn`` takes the descriptor path only when asked via ``use_tma``.
 """
 
 import logging
@@ -15,11 +16,7 @@ try:
 except Exception:
     TensorDescriptor = None
 
-from ._autotune_log import (
-    AUTOTUNE_EXTRAS as _AUTOTUNE_EXTRAS,
-    BV_SAFE_AUTOTUNE as _BV_SAFE_AUTOTUNE,
-    wrap as _wrap_autotune,
-)
+from ._autotune_log import lean_do_bench as _lean_do_bench, wrap as _wrap_autotune
 from ._preprocess import prepare
 
 _logged_no_descriptor = False
@@ -43,25 +40,16 @@ BLOCK = 64
 GROUP = 32
 
 
-def _descriptor_ready(t):
-    """Whether TMA can address this tensor as it stands.
-
-    A descriptor needs only a 16-byte aligned base, 16-byte aligned outer
-    strides, and a contiguous last dim.
-    """
-    if t.stride(-1) != 1 or t.data_ptr() % 16 != 0:
-        return False
-    itemsize = t.element_size()
-    return all((s * itemsize) % 16 == 0 for s in t.stride()[:-1])
-
-
 def _to_blocks(t, block):
-    """Input for the descriptor path: the tensor itself when TMA can address it,
-    otherwise one contiguous copy padded to whole blocks."""
+    """Contiguous copy padded to whole blocks for the descriptor path's unmasked I/O.
+
+    One allocation per tensor, taken one at a time: contiguous() followed by a
+    separate pad would hold two full copies of all three inputs at once.
+    """
     tokens = t.shape[1]
-    if _descriptor_ready(t):
-        return t, tokens, tokens
     padded = (tokens + block - 1) // block * block
+    if padded == tokens and t.is_contiguous():
+        return t, tokens, padded
     out = torch.empty((t.shape[0], padded) + t.shape[2:],
                       device=t.device, dtype=t.dtype)
     out[:, :tokens].copy_(t)
@@ -76,7 +64,8 @@ def _to_blocks(t, block):
         for stages in (1, 2, 3, 4)
     ],
     key=["T"],
-    **_AUTOTUNE_EXTRAS,
+    cache_results=True,  # persist timings across restarts, not just per process
+    do_bench=_lean_do_bench,
 )
 @triton.jit
 def _forward(
@@ -209,7 +198,8 @@ def _forward(
         triton.Config({"BV": 64, "GROUP_SIZE": 64}, num_warps=4, num_stages=1),
     ],
     key=["T"],
-    **_BV_SAFE_AUTOTUNE,
+    cache_results=True,  # persist timings across restarts, not just per process
+    do_bench=_lean_do_bench,
 )
 @triton.jit
 def _forward_ptr(
@@ -358,6 +348,7 @@ def sol_attn(
     *,
     scale: float | None = None,
     tau: float = 1.0,
+    cornish_fisher: bool = False,
     sink_blocks: tuple = (0, 0),
     sink_q: tuple = (0, 0),
     use_tma: bool = False,
@@ -384,7 +375,8 @@ def sol_attn(
             q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
         tokens = padded = q.shape[1]
     blocks = triton.cdiv(tokens, BLOCK)
-    kc, vc, threshold = prepare(q, k, v, scale=scale, tau=tau, tokens=tokens)
+    kc, vc, threshold = prepare(q, k, v, scale=scale, tau=tau, tokens=tokens,
+                                cornish_fisher=cornish_fisher)
     output = torch.empty((batch, padded, heads, head_dim),
                          device=v.device, dtype=v.dtype)
     if not use_tma:

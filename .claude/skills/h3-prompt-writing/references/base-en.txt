@@ -276,7 +276,7 @@ The snippets below illustrate distinct deliveries, not a sequence to pack into o
 
 The crying line above is newly authored, not a transcription of the community clip. If a user provides their own line, retain that line instead. Descriptions of tears, posture, gaze, mouth movement, breath, and voice should support the intended delivery; do not replace all acting direction with `[crying]` alone.
 
-Only say the performer follows the melody of `<Audio 1>` when an actual audio asset was supplied, is supported by the selected workflow, and is defined as a reference. Otherwise the humming example describes a generated melody, not reproduction of a missing recording. Similarly, do not copy “The shot begins from the source <Video 1>” into a text-only or image-reference request without a real source video. The web page's reference-image input does not itself supply video or audio references.
+Only say the performer follows the melody of `<Audio 1>` when an actual audio asset was supplied, is supported by the selected workflow, and is defined as a reference. Otherwise the humming example describes a generated melody, not reproduction of a missing recording. Similarly, do not copy “The shot begins from the source <Video 1>” into a text-only or image-reference request without a real source video. The web page's 参考图片 tab supplies images only; its separate 参考视频 tab can supply a reference video, and that video's own soundtrack only when the user explicitly enables it.
 
 ### 6.5 Display and Preservation
 

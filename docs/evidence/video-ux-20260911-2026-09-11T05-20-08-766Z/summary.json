@@ -1,0 +1,63 @@
+[
+  {
+    "name": "Eight-second AI preview, editable final prompt, single submission, success unlock",
+    "pass": false,
+    "elapsedMs": 12669,
+    "error": "Completed generation did not unlock the main button"
+  },
+  {
+    "name": "AI direct-submit path includes duration without an in-graph AI bypass",
+    "pass": true,
+    "elapsedMs": 416
+  },
+  {
+    "name": "AI off leaves original prompt and acting tags unchanged",
+    "pass": true,
+    "elapsedMs": 358
+  },
+  {
+    "name": "Reference-image AI receives eight seconds and treats model descriptions as text",
+    "pass": true,
+    "elapsedMs": 384
+  },
+  {
+    "name": "Back from preview preserves final editing and unlocks video settings",
+    "pass": true,
+    "elapsedMs": 362
+  },
+  {
+    "name": "Empty final prompt cannot submit a generation task",
+    "pass": true,
+    "elapsedMs": 464
+  },
+  {
+    "name": "mobile-320: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 264
+  },
+  {
+    "name": "mobile-390: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 243
+  },
+  {
+    "name": "desktop-1440: no overflow, visible media metadata, literal prompt tags",
+    "pass": true,
+    "elapsedMs": 313
+  },
+  {
+    "name": "Inline video and gallery DOM survive periodic refresh",
+    "pass": true,
+    "elapsedMs": 5482
+  },
+  {
+    "name": "Failed metadata remains pending and retries successfully",
+    "pass": true,
+    "elapsedMs": 5210
+  },
+  {
+    "name": "Queue or gallery failure shows a recoverable visible state",
+    "pass": true,
+    "elapsedMs": 181
+  }
+]

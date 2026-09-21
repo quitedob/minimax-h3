@@ -1,0 +1,118 @@
+- main:
+  - paragraph: MINIMAX H3 · 有声视频
+  - link "查看视频 ↓":
+    - /url: "#queue-panel"
+  - heading "让你的想法，动起来" [level=1]
+  - paragraph: 描述一个画面，生成带声音的短视频。
+  - region "创建视频":
+    - tablist "创作方式":
+      - tab "描述画面" [selected]
+      - tab "用图片创作"
+    - tabpanel "描述画面":
+      - text: 你想看到什么？
+      - textbox "你想看到什么？":
+        - /placeholder: 例如：小狗在阳光下追着泡泡跑，镜头缓缓跟随，能听到轻快的脚步和鸟叫。
+      - checkbox "AI 帮我完善描述" [checked]
+      - text: AI 帮我完善描述
+      - paragraph: 补充镜头、动作与声音；关闭后使用你的原文。
+    - group: 补充声音或对白（选填）
+    - text: 视频时长
+    - combobox "视频时长":
+      - option "约 5 秒" [selected]
+      - option "约 6 秒"
+      - option "约 7 秒"
+      - option "约 8 秒"
+    - text: 画面清晰度
+    - combobox "画面清晰度":
+      - option "标准 · 480p" [selected]
+      - option "高清 · 720p"
+    - paragraph: 时长会告诉 AI；实际视频时长可能有少量偏差。高清需要更久。
+    - checkbox "生成前，先确认提示词" [checked]
+    - text: 生成前，先确认提示词
+    - group: 更多设置
+    - text: 先写下你的视频想法
+    - button "准备提示词" [disabled]
+    - paragraph: 公开创作空间：提示词、视频和生成队列对所有访客可见，请勿填写隐私信息。
+  - region "视频与进度":
+    - heading "视频与进度" [level=2]
+    - button "刷新"
+    - status: 0 个制作中 · 0 个排队 · 17 个视频
+    - article:
+      - text: 已完成 9月11日 12:34
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 未记录
+      - text: 提示词
+      - paragraph: A cinematic shot of a golden retriever puppy running through a sunlit park at golden hour, grass blowing in the wind, camera tracking smoothly, warm natural lig…
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_bench_h3_turbo_v4_8step_solattn_26d816e_00001_.mp4&type=output&subfolder=video
+    - article:
+      - text: 已完成 9月9日 14:57
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 10 分 17 秒
+      - text: 提示词
+      - paragraph: "subject_definitions: <Subject 1> is the black Shiba Inu in <Picture 1>, with classic black, brown, and white tricolor fur, a black back coat, light-brown cheeks…"
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_mttqjvxrty04_00001_.mp4&type=output&subfolder=video
+    - article:
+      - text: 已完成 9月9日 14:54
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 8 分 50 秒
+      - text: 提示词
+      - paragraph: "subject_definitions: <Subject 1> is the black-and-tan puppy in <Picture 1>, a Shiba Inu mix with thick fur, a wet black nose, pointed upright ears, and distinct…"
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_mttqi57do6ok_00001_.mp4&type=output&subfolder=video
+    - article:
+      - text: 已完成 9月9日 14:51
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 8 分 44 秒
+      - text: 提示词
+      - paragraph: "subject_definitions: <Subject 1> is the tricolor Shiba Inu in <Picture 1>, with black, brown, and white fur, a wet black nose, and its head resting sideways aga…"
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_mttqexgzt314_00001_.mp4&type=output&subfolder=video
+    - article:
+      - text: 已完成 9月9日 14:37
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 未记录
+      - text: 提示词
+      - paragraph: "subject_definitions: <Subject 1> is the small black-and-tan Shiba Inu mix in <Picture 1>, with deep black, warm tan, and creamy white layered fur, a wet texture…"
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_mttpx3882l2o_00001_.mp4&type=output&subfolder=video
+    - article:
+      - text: 已完成 9月9日 14:08
+      - term: 视频时长
+      - definition: 约 5.17 秒
+      - term: 生成用时
+      - definition: 2 分 29 秒
+      - text: 提示词
+      - paragraph: A cinematic shot of a golden retriever puppy running through a sunlit park at golden hour, grass blowing in the wind, camera tracking smoothly, warm natural lig…
+      - group: 查看完整提示词
+      - paragraph: 864×480 · 8 步
+      - button "播放视频"
+      - link "下载视频":
+        - /url: /h3/download?filename=web_bench_h3_turbo_v4_8step_warm_00001_.mp4&type=output&subfolder=video
+    - button "查看更多视频"

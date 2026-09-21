@@ -34,7 +34,7 @@ Full-reference rewrites use four types of labels to identify the source and role
 
 > Once a reference label is assigned to a piece of content, it keeps the same meaning across `subject_definitions`, `summary`, `retention_analysis`, `detailed_description`, and the audio sections.
 
-For the current web reference-image flow, one to five uploaded images map in order to `<Picture 1>` through `<Picture N>`. Keep that supplied numbering even when several pictures define one subject, or a picture supplies only a background. Do not reorder labels by importance, turn them into first/last frames, or create missing video/audio references. Images alone can constitute a Ref2VA request; every reference category need not be present.
+On the web page the 参考图片 tab maps one to five uploaded images in order to `<Picture 1>` through `<Picture N>`, and the separate 参考视频 tab maps one to three uploaded videos in order to `<Video 1>` through `<Video N>`. Keep that supplied numbering even when several pictures define one subject, or a picture supplies only a background. Do not reorder labels by importance, turn them into first/last frames, or create missing video/audio references. Attachments alone can constitute a Ref2VA request — pictures, videos, or both — and not every reference category need be present.
 
 `subject_definitions` defines each piece of referenced content that must be tracked separately later, such as a person, an environment, a source video's structure, or an audio track. Give each item its own line and explain what its label denotes, its reference role, and the main features to follow; name the corresponding source asset when its provenance needs to be made explicit. If `<Picture N>` or `<Video N>` only identifies the source of another referenced item and will not be analyzed or used separately later, cite it inside that item's definition without adding a separate line. `retention_analysis` records where each referenced item appears and whether it is fully preserved, partially preserved, transferred, or reused.
 
@@ -112,6 +112,8 @@ When one audio asset serves multiple roles, describe those roles in one natural 
 `<Video N>` and `<Audio N>` are numbered independently. Each index indicates only the label's order within its own category and does not encode a pairing between the two categories. The same reference video may therefore correspond to `<Video 1>` and `<Audio 2>`; different indices do not prevent them from coming from the same source asset.
 
 An ordinary reference video does not create `<Audio N>` merely because the file contains sound.
+
+When the request states that a supplied reference video's own soundtrack is attached as an audio reference, that statement is authoritative for the numbering: only the videos listed as attached carry an `<Audio j>` label, each attached soundtrack is presented immediately before the `<Video k>` it belongs to, and the mapping given in the request overrides the independence rule above.
 
 An `<Audio N>` definition primarily states the audio's role and does not have to name the `<Video N>` it comes from. State the shared source only when needed to remove provenance ambiguity, for example:
 

@@ -1,0 +1,80 @@
+{
+  "aiRequests": [
+    {
+      "body": {
+        "user_text": "一只小狗在草地上抬头看镜头，轻微摇尾巴，没有对白。\n\n视频创作要求：这是一个 8 秒的视频。请将镜头、动作、对白和停顿安排在该时长内完成，优先一个清晰的主要动作，不要堆叠过多事件。 分别写清画面、镜头运动与声音；镜头运动要有方向、幅度、速度和构图目的。声音明确来源、节奏及与动作的对应关系，避免对白与大量音效争抢。 保留用户明确写出的对白内容和表演标签（例如 <d>、<pause>、<breath>），不要把它们当作 HTML。不要凭空引用未提供的视频或音频素材。",
+        "mode": "T2VA"
+      },
+      "startedAt": 1789104463298,
+      "elapsedMs": 3343,
+      "status": 200,
+      "response": {
+        "h3_prompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, a low-angle medium close-up frames a small puppy standing on a sunlit grassy lawn, its body angled slightly toward the camera with its head tilted up and its gaze fixed directly into the lens. The camera holds a static shot at eye level with the puppy, keeping the animal centered in the lower third of the frame against a softly blurred background of green grass and distant trees. The puppy's ears prick forward, its muzzle lifts a little higher, and its tail begins a slow, light wag that swings side to side with small amplitude at a relaxed rhythm. Sunlight catches the fine hairs along its back and the grass blades sway gently in a light breeze around its paws. The puppy blinks once, shifts its front paws slightly on the grass, and its tail continues wagging at the same easy pace until the end of the shot, its attention never leaving the camera.\n\noverall_soundscape: A light breeze moves through the grass with a soft, continuous rustle. The puppy's tail brushes against nearby grass blades in a faint rhythmic swish, and a few distant birds chirp intermittently in the background.\n\nnon_diegetic_music: N/A",
+        "image_description": null,
+        "vlm_error": null,
+        "mode": "T2VA"
+      }
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/video",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/queue",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/h3/files",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/view",
+      "status": 206
+    },
+    {
+      "method": "HEAD",
+      "path": "/h3/download",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/h3/files",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/queue",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/h3/prompt",
+      "status": 200
+    }
+  ],
+  "pageErrors": [],
+  "blockedWrites": [],
+  "viewports": [
+    {
+      "innerWidth": 390,
+      "innerHeight": 844,
+      "documentWidth": 390,
+      "title": "有声视频 · MiniMax H3"
+    }
+  ],
+  "media": {
+    "durationSeconds": 5.167,
+    "source": "/view?filename=web_bench_h3_turbo_v4_8step_solattn_26d816e_00001_.mp4&type=output&subfolder=video",
+    "download": {
+      "status": 200,
+      "disposition": "attachment; filename=\"web_bench_h3_turbo_v4_8step_solattn_26d816e_00001_.mp4\"",
+      "contentType": "video/mp4"
+    }
+  }
+}
