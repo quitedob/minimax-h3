@@ -885,3 +885,653 @@ API 轮询侧测得组合链冷启动 615.57 秒、热启动 200.28 秒；与 Co
 - 输出 MP4（`ComfyUI_windows_portable/ComfyUI/output/video/`）：`MiniMax_H3_int8_solattn_easycache_00001_.mp4`、`_solattn_hot44_00001_.mp4`、`_flashattn_easycache_00001_/00002_.mp4`、`_flashsolexactkv_easycache_00001_.mp4`、`_flashsol_hot45_00001_.mp4`、`_sagesol_easycache_00001_.mp4`。
 - 临时脚本在 `.tmp/`：`flash_smoke_test.py`、`sage_smoke_test.py`、`submit_8189/8190.py`、各 `*_int8.json` 工作流 copy、`freeze_minus_torch.txt`、`venv_freeze.txt`。
 - 记忆已写入 `memory/`：`project-machine-is-rtx4080`、`project-flash-setup-works`、`project-sage2-works-on-sm89`。
+## 十八、Turbo v4 接入稳定栈，默认 8 步（2026-09-09）
+
+### 18.1 接入与本地入口
+
+- 按用户要求接入当前 `ComfyUI_sage3_py312` 的 **NVFP4 TE + SolAttn + EasyCache**；启动保持 `COMFY_SAGE3=0`，日志确认 `Using pytorch attention`。目录名中的 Sage3 不代表启用了 Sage3。
+- 安装 [ComfyUI-MiniMax-H3-Turbo](https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo) `1.2.3`，commit `4274783a23afcfdbea3b4876cb79effd6c510785`。没有更新 ComfyUI、Torch 或 CUDA，没有新增 Python 依赖。
+- 本地 LoRA `models/minimax_h3_turbo_v4_step600_ema.safetensors`：779,849,816 bytes；SHA-256 `5f3a626cd72c93a8b9318d6760c510bc5092d2ab13aaba1f932c5bab07a416d3` 与 Hugging Face API 公布的 LFS SHA-256 完全匹配。通过 NTFS hardlink 放入当前实例 `models/loras/`，原文件保留，不重复下载/占用权重空间。
+- MODEL 链：`UNETLoader → MiniMaxH3TurboLoRA → SolAttnPatch → EasyCache → BasicGuider`；`BasicScheduler` 也引用 EasyCache 输出；`MiniMaxH3TurboSampler → SamplerCustomAdvanced.sampler`。
+- 默认 **8 steps / simple / strength 1.0 / low_vram=false**。SolAttn 保持 tau 1.3、0.2–0.9、INT8 QK、exact_kv_and_rows、Morton 2d_frame；EasyCache 保持 threshold 0.30、0.2–0.9。少步模式实际跳步数以本轮日志为准。
+- 当前旧版 ComfyUI 没有原生 `ModelSamplingAV`，Turbo Sampler 使用兼容的双 schedule 路径；节点自带约 5.5 MB 的时间嵌入表，用于当前 pruned FP8 基座的 AdaLN LoRA 注入。
+- 网页模板 `comfyui_download/cloud_h3_sage3_solattn_easycache_prompt.json` 及运行实例副本已切换 Turbo；保留历史文件名供现有 `/video` 节点读取。网页步数输入与提交逻辑同步改为 4–8、默认 8，避免原来的最低 10 步覆盖新默认值。
+- 可视化工作流：`comfyui_download/workflows/H3_DeepSeek_T2V_Turbo_v4_SolAttn_EasyCache.json`，已安装到当前实例 `user/default/workflows/`。原工作流保留供对照。
+- 本地启动：`powershell -ExecutionPolicy Bypass -File F:\python\h3\ComfyUI_sage3_py312\start_web_server.ps1`；页面 **http://127.0.0.1:8188/video**，编辑器 **http://127.0.0.1:8188/**。只监听 127.0.0.1，未调用云端 launcher。停止了此前遗留的 H3 SSH 转发进程 PID 22416，未修改登录计划任务。
+- 注册验证：Turbo LoRA、Turbo Sampler、SolAttn、EasyCache 均存在于 `/object_info`，LoRA 下拉列表可见准确文件名；浏览器确认 `/video` 默认值 8、min 4、max 8，嵌入图包含两个 Turbo 节点。
+
+### 18.2 基准方法
+
+- 基准脚本 `comfyui_download/benchmark_h3_turbo.py` 经本机 API 顺序提交进程冷启动 seed 42、同进程热启动 seed 43；不调用 DeepSeek。原始 prompt、服务端 history、WebSocket 节点/进度时间和资源采样存于 `comfyui_download/h3_turbo_v4_8step_benchmark.json`。
+- 沿用 §13.7 的英文 golden retriever puppy / sunlit park 提示词，**864×480、124 帧、24 FPS**；基座 `minimax_h3_fl2va_pruned_fp8_scaled.safetensors`，TE `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`，FP16 视频 VAE + FP32 音频 VAE。仅把旧 20 步配置改成 Turbo LoRA + 专用采样器 + 8 步。
+- 历史主对照采用同 Python 3.12 / Torch 2.10.0+cu130 / ComfyUI 0.30.0 环境的 `sol_easy_control_server.log`：冷总 580.32s、冷采样约 165s；热总 193.41s、热采样约 163s，EasyCache 均跳 7/20。§8 的 Torch 2.13 对照只作为补充，避免混用环境。
+- 冷启动指新的 ComfyUI 进程，未清空 Windows 文件缓存；跨日期冷启动总时间受磁盘缓存、模型加载和 VAE 初始化影响。性能主结论采用热总耗时和采样段，不能把 20→8 的步数比例当作已测加速比。
+- 预检：RTX 5060 Ti 15.93 GiB、驱动 591.86、CUDA 13.0 Torch build；系统 RAM 63.84 GiB，测试前可用 47.51 GiB，F 盘可用 90.09 GiB。资源采样记录显卡整体显存/利用率、ComfyUI 进程 RSS 和系统实际使用内存，属于间隔采样峰值。
+
+### 18.3 实测完成：热启动省 43.79 秒，冷启动没有提速
+
+两次均为 `success`，没有 OOM、CUDA/native abort 或 GPU lost。cold prompt_id：`b7223e91-2037-4202-8718-d14423be0f18`；warm prompt_id：`46c8a4c3-aa3e-48b6-a7ff-8c72ef2af024`。
+
+| 指标 | 原配置 20 步（§13.7 历史） | Turbo v4 8 步（本轮） | 变化 |
+|---|---:|---:|---:|
+| **热启动完整生成** | **193.41s / 3:13.41** | **149.618s / 2:29.62** | **省 43.792s，耗时 −22.64%，1.293×** |
+| 冷启动完整生成 | 580.32s / 9:40.32 | 632.432s / 10:32.43 | 多 52.112s，慢 8.98% |
+| 热采样段（约） | 163s | 107.92s | 约省 55s / 34% |
+| EasyCache 跳步 | 7/20 | **0/8（冷热均相同）** | 本轮缓存没有跳过模型计算 |
+
+完整生成时间取服务端 `execution_start` → `execution_success`，API 侧墙钟分别为 632.667s、149.802s，不把轮询开销算作生成时间。主加速结论是**热总时间 1.29×**，不是 20/8=2.5×，也不是模型卡上 4 步对 20 步的宣传倍率。
+
+本轮 WebSocket 阶段计时（边界有毫秒级接收延迟）：
+
+| 阶段 | 冷启动 seed 42 | 热启动 seed 43 |
+|---|---:|---:|
+| 到进入 Sampler 节点前 | 177.26s | 0.07s（前置节点命中缓存） |
+| Sampler 节点（含内部加载） | 352.59s | 107.92s |
+| 双 VAE 解码、编码、保存 | 102.57s | 41.62s |
+
+- Turbo 的原始 tqdm 冷采样 329s 包含第一次前向约 237.75s 的加载/计算；旧 ComfyUI `comfy.utils.model_trange` 会用第二次迭代时长修正 `start_t`、剔除估算的初始化开销。因此**不能直接把 Turbo 冷 tqdm 329s 与旧 165s 比较**。热启动两种口径的初始化偏差较小，主结论仍以服务端完整总时间为准。
+- 冷总耗时跨日期波动，本轮没有冷启动加速证据；本轮热解码/保存 41.62s 也明显多于旧记录中的约 15s，所以采样段的收益没有全部体现在总耗时上。没有额外改 VAE 或调参来掩盖这一点。
+- LoRA 节点日志确认 `pruned base [bypass]`，208 个 backbone adapters + 51 个 AdaLN 注入；第一次前向的 `qkv_proj.forward_owner=BypassForwardHook` 确认增量实际参与，热启动复用已缓存的模型链。Turbo 两轮均明确打印 `legacy dual-schedule (no native ModelSamplingAV)`。
+- 保留用户指定的 EasyCache 0.30；0/8 跳步说明本例没有得到 EasyCache 的额外收益，不代表组件未安装。没有为了制造更大加速比提高阈值。
+- 这是两条 Turbo 样本与**历史同环境**基准的比较，未重新跑 20 步，也不是多轮统计或同日严格 A/B；不得据此宣称质量与 20 步完全等价。
+
+### 18.4 产物、资源与质量
+
+输出位于 `ComfyUI_sage3_py312/output/video/`，也能在本地 `/video` 的视频列表中预览、下载；已通过 `/h3/meta` 写入精确生成用时，重启后仍可显示。
+
+- 冷：`web_bench_h3_turbo_v4_8step_cold_00001_.mp4`（1,593,750 bytes）。
+- 热：`web_bench_h3_turbo_v4_8step_warm_00001_.mp4`（1,651,984 bytes）。
+- 两条均完整解码 **124 帧、864×480、24 FPS、5.167s、H.264 + AAC 32kHz 双声道**。AAC 解码为 165,888 samples / 5.184s，含编码帧填充；容器时长为 5.167s。
+- 关键帧 10/60/120：冷 std 61.35/64.51/69.27，唯一色 58k–63k；热 std 60.54/54.79/62.40，唯一色 59k–72k。时间差 1/5/20 帧的 MAD，冷为 11.67/22.97/28.75，热为 16.21/25.73/40.26，均有运动。
+- 联系表可见金毛幼犬、草地和暖色逆光，姿态随时间变化，未出现纯灰/噪声或场景塌缩。这里只做关键帧视觉检查，不能据此保证全部动作细节与旧 20 步等价。
+- 音频为有限、非静音信号：RMS 冷 0.0471 / 热 0.0417，peak 0.2643 / 0.2023；未进行人工听感对照，不宣称音频质量无损。
+
+| 采样资源峰值 | 冷 | 热 |
+|---|---:|---:|
+| GPU 整体显存 | 15,674 MiB | 15,398 MiB |
+| ComfyUI RSS | 46,307 MiB | 46,352 MiB |
+| 系统使用内存（total − available） | 59,067 MiB | 59,011 MiB |
+| GPU 利用率 / 温度 | 100% / 78°C | 100% / 80°C |
+
+证据与复现：
+
+- `comfyui_download/h3_turbo_v4_8step_benchmark.json`：完整请求、history、事件时间线、约 2 秒间隔的资源观测。
+- `comfyui_download/run_h3_turbo_v4_8step_stdout.log` / `run_h3_turbo_v4_8step_stderr.log`：本轮服务端日志归档，避免下次启动覆盖原始数据。
+- `comfyui_download/h3_turbo_v4_8step_quality.json`：媒体与帧/音频统计；`web_bench_h3_turbo_v4_8step_{cold,warm}_00001__contact.jpg`：关键帧。
+- 本地服务空闲时，用当前 venv 运行 `comfyui_download/benchmark_h3_turbo.py`；要复现进程冷启动需先重启本地 ComfyUI，第二条自动使用 seed 43 做热启动。
+- 质量复查：当前 venv 运行 `comfyui_download/inspect_h3_turbo.py <cold.mp4> <warm.mp4>`。
+
+回退到原配置时，恢复本节改动前的 API 模板和网页文件并同步到运行实例，选择原 20 步工作流即可；Turbo 节点只有连接进图才参与，原始权重与 Python 环境均保留。测试结束后本地 8188 继续运行、队列为空，SSH 转发未重启。
+
+### 18.5 按用户要求接回云端 `/video`（2026-09-09）
+
+- 本地基准结束后，用户要求云端使用同一套 Turbo v4 8 步配置并重新打开 SSH。继续复用已加载模型的本地 ComfyUI（PID 24524），没有重启模型服务或提交新生成任务。
+- 实查 `/etc/caddy/Caddyfile` 发现当前 upstream 已是 **127.0.0.1:18188**，与旧 devlog/SSH 脚本记录的 8188 不同；18188 当时没有监听，公网返回 502。保持当前 Caddy 配置，把本地 launcher 的映射改为 **`-R 127.0.0.1:18188:127.0.0.1:8188`**。
+- 启动脚本 `F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat` 的旧 UTF-8 中文注释/LF 文件在 cmd 中出现命令截断错误；改为 ASCII 注释并规范为 CRLF，重启后的日志没有这些错误。原文件备份为同目录 `start-comfyui-cloud.bat.before-turbo-20260909-1421`。
+- 隐藏窗口启动现有断线重连循环：launcher PID 5840、SSH PID 28896；SSH 保活间隔 30s，掉线后循环重连。登录计划任务仍调用此脚本，所以后续也使用正确端口。保持 `COMFY_SAGE3=0`，没有启用 Sage2/Sage3。
+- 公网 **https://video.geekq.xyz:552/video** 已验证 HTTP 200；解析实际返回的工作流，确认 Turbo v4 EMA、strength 1.0、simple、8 steps、Turbo Sampler，以及 `Turbo LoRA → SolAttn → EasyCache` 链。
+- 公网基准视频下载 HEAD 返回 HTTP 200、`video/mp4` 和 `Content-Disposition: attachment`；云端通过 18188 查询队列成功且为空。WSS 连接也完成握手并收到 `status` 事件。
+- 最新连接日志：`F:\python\llamacpp\deploy-cloud\comfyui-tunnel-turbo-20260909-142042{,-error}.log`。
+
+## 十九、更新现有 Kijai SolAttn 节点（2026-09-11）
+
+- 用户要求更新现有节点，不切换到 Saganaki22，也不安装 WSL。实际安装来源为 [kijai/ComfyUI-SolAttn_triton](https://github.com/kijai/ComfyUI-SolAttn_triton)，此前是无 `.git` 的源码快照。逐文件 Git blob 核对：除本地 `_morton_h3.py` 兼容补丁外，9 个 Python 文件中的其余 8 个均匹配 `82e6fdf`（8 月 5 日）。
+- 已更新到上游 HEAD **`26d816ebd4f1e43a2c6e4d4759be3137f10a7a73`**。该仓库无版本标签，使用 commit 标识版本；最新代码变更为 `842c4ea`（8 月 8 日），9 月 7 日两个提交更新 README 并注明功能已进入官方 ComfyUI/comfy-kitchen、旧插件被弃用。更新旧插件不等于已启用新版官方 CUDA Sparse Attention。
+- 保留 `_morton_h3.py` 的 14 行本地兼容补丁，`_SKIP_LAYOUT_PATCH=False`，其 SHA256 与更新前一致。已补齐对应 Git 元数据；`git diff --stat` 仅剩这项本地补丁，其他代码与上游一致。
+- 新增功能包括 dense_blocks、tau_profile、Block Probe、INT8 P·V，以及预处理/自动调优修复。当前图明确设 **int8_pv=false、dense_blocks=""**，保留原 INT8 QK、tau 1.3、0.2–0.9、exact_kv_and_rows、Morton 2d_frame、pointer 路径。没有自动启用新增近似选项。
+- 同步两个生产 API 模板，并修正 canonical/runtime 中 Turbo 与原工作流共 4 份可视化 JSON 的新增 widget 顺序，避免旧布尔值错位。Turbo 仍为 **8 steps / simple / strength 1.0**；LoRA、EasyCache、模型文件、ComfyUI 0.30.0、Torch 2.10.0+cu130、Triton-Windows 3.6.0.post26、CUDA 依赖均未变，保持 SDPA fallback、无 Sage2/3。
+- 回退备份：`comfyui_download/solattn_backup_20260911/`，含完整旧节点、2 个 API 模板、4 个可视化图和重启前日志。需要回退时先等队列空并停服务，保留新版目录另存，恢复该目录中的旧节点与对应模板，再用原 `start_web_server.ps1` 启动；不需要重新下载模型或重装依赖。
+- 导入与 block parser 检查通过；CUDA 4097 tokens、2 heads、128 head_dim、ragged strided QKV、exact KV/row sinks、INT8 QK pointer 小测试通过，输出有限，相对旧版输出 L2 为 **0.0000815231**（int8_pv=false）。这不是完整视频质量等价证明。
+- 确认队列空后重启本地 8188；未操作 SSH。新版 `/object_info/SolAttnPatch` 已出现新增输入，两个 API 模板的 required inputs 全量匹配，四个可视化图的 12 个 widget 映射检查通过；公网 `/video` 返回 HTTP 200。
+- 完整出片验证**通过**：`verify_solattn_update.py` 提交 `ffc3d1cc-063f-47ba-ab52-e9e10b0c70f2`，864×480、124 帧、24 FPS、seed 42、Turbo 8 步；服务端完整耗时 **725.228 秒（12:05.23）**。这是更新后单次冷启动验收，包含模型加载、首次新内核调优和解码；本轮系统内存压力较大，不与 §18 热启动数字比较，也不宣称新旧版本加速比。
+- 实际运行证据：Turbo 日志显示 `qkv_proj.forward_owner=BypassForwardHook`；新版日志显示 `int8 forward (pointer) benchmarked 6 config(s)` 与 `sparse (1, 15441, 56, 128) tau=1.3 int8 pointer`，conditioning sink 的 KV/query blocks 均为 `(0, 8)`；8/8 步正常结束，无内核失败日志，EasyCache 跳过 0/8。
+- 输出 `ComfyUI_sage3_py312/output/video/web_bench_h3_turbo_v4_8step_solattn_26d816e_00001_.mp4`，1,597,270 bytes；H.264、864×480、124 帧、24 FPS、容器 5.167 秒；AAC、32kHz、双声道、有限非静音样本（RMS 0.04784）。三帧人工检查为夕阳草地上运动的金毛幼犬，非灰片、非静帧；本次没有做逐帧新旧质量等价或音画同步主观评分。
+- 2 秒间隔采样峰值：显卡整体 **15,616 MiB**、服务进程 RSS **41,957.57 MiB**、系统已用内存 **63,979.79 MiB**。验收结果及事件/资源明细：`comfyui_download/solattn_26d816e_8step_validation.json`；运行日志：`solattn_26d816e_validation_{stdout,stderr}.log`；三帧预览：`web_bench_h3_turbo_v4_8step_solattn_26d816e_00001__contact.jpg`。
+- 验收后队列为空，8188 保持运行（PID 12464），公网 `/view` 的该 MP4 返回 HTTP 200、`video/mp4`；SSH 未重启。默认网页模板仍关闭 verbose 和新增 INT8 P·V，仅验证任务开启 verbose 记录实际内核。
+
+## 二十、训练期间停服、网页五张参考图与提示词 skill（2026-09-11）
+
+### 20.1 当前运行约束
+
+- 用户随后明确说明正在进行 YOLO 训练、禁止测试，并要求停止 8188。已确认端口归属为 ComfyUI Python 进程 PID 12464，仅停止该进程；当时复查 8188 已关闭。此状态覆盖 §19 的“8188 保持运行”。未停止其他 Python/训练进程，未操作 SSH。
+- 后续多图与 skill 修改只做文件编辑及静态阅读/差异核对：没有运行测试、语法/编译检查、浏览器、API 请求、GPU 检查或视频生成，也没有重启服务。旧章节的验收数据不构成本轮多图验证。
+
+### 20.2 参考图片由一张扩展为最多五张
+
+- 原因：网页仅读取 `refimg.files[0]`，仅传 `image_name`，并只连接一个 `LoadImage` 到 `ref_images.ref_image_0`；H3 核心参考节点的现有 autogrow 输入本身允许多图。本轮产品上限限定为 **5 张**，未修改核心节点或模型。
+- 网页可多选或分次追加，显示图 1–5 的缩略图、文件名与总数，可逐张移除或全部清空。满额禁用添加；超限整批拒绝且保留已有选择。格式为 JPEG/PNG/WebP/GIF，原文件合计限 32 MiB。待上传/AI/待确认阶段锁定图片选择，避免编号与待提交任务错配。
+- 按选择顺序逐张上传，失败立即停止本次准备；成功上传的文件名可供重试复用。草稿仅存上传名/显示名/大小，不保存 File 或 blob URL；未上传的本地图片刷新后需按原顺序重选，并显示提示。兼容旧单图待确认草稿，文生任务与另一标签页的图片草稿分别恢复。
+- `/h3/prompt` 接受 `image_names` 数组（字段存在时优先），兼容单张 `image_name`；校验数量与非空名称。视觉分析在一次请求中逐张添加 `<Picture N>` 及图片内容，不拆成五次串行视觉调用。图片解析路径必须在 input 目录内，使用合计 32 MiB 的有界读取。
+- 视觉分析失败仍保留全部图片及编号，明确提示改写仅依据文字，不编造图片内容或移除失败图片。生成图为每张参考图建立独立 `LoadImage`，依次连接 `ref_images.ref_image_0…4`，没有用图像 batch 合并而导致核心只读取第一帧。
+- 已分别补丁更新 `comfyui_download/h3_web_queue/` 与 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/` 的 HTML/Python；同类文件 SHA256 一致。未覆盖其他修改。后端改动随用户下一次启动 8188 生效；本轮不启动验收，也不声称公网已可用或五图生成已成功。
+- 保持默认 **8 步**、原分辨率/时长、Turbo LoRA、SolAttn、EasyCache 和既有模型切换逻辑，未安装依赖或调整加速参数。多图实际显存占用、上游视觉接口兼容性、手机真机表现待用户允许后验证。
+
+### 20.3 H3 prompt-writing 案例与规则
+
+- 按 skill-creator 的按需参考组织方式，新增 `.claude/skills/h3-prompt-writing/references/action-continuity.md`：保留用户“5 秒蝙蝠侠/超人屋顶一镜到底”原文，另列动作预算、屏幕方向、钢索/撞击声音时序、最终朝向与静止限制的文本问题，以及节拍计划模板。不把原例当作成功出片模板。
+- `SKILL.md` 建立案例入口；`base-en.txt` §7 提炼通用规则：节拍不是切镜、位置/朝向/运动/视线分别描述、动作因果与道具状态连续、声音跟随接触事件、时长与限制一致。保留用户详细动作链，不为追求短提示词擅自删动作、增时长或改步数。
+- 补齐用户后续提供的表演标签与例句到 `base-en.txt` §6.6，包括呼吸、停顿、低语、哼唱、笑声、叹息、口部声音等；区分成对标签与独立提示，均标为社区意图而非本地验证。
+- `ref-en.txt` 补充 1–5 张图片按上传顺序绑定 `<Picture N>`、图片即可组成 Ref2VA、不能自动当首尾帧或虚构视频/音频素材；沿用原六字段。网页 AI 指令同步保留用户明确的分镜节拍与镜头数量。
+- 网页现有 `_skill_prompt()` 每次读取主 skill、base-en、ref-en，因此会包含核心新规则；完整原例单独按需阅读，不扩大每次 AI 请求的长案例输入。按用户禁测要求，未运行 skill 验证器、AI 试写或生成测试。
+
+## 二十一、网页首尾帧模式与 `!` 教程（2026-09-11，未运行验证）
+
+- 新增独立“首尾帧”页：首尾双图 FL2VA、仅首图 I2VA、仅尾图 L2VA，至少一张。使用本地已有 `MiniMaxH3ImageToVideo.first_frame/last_frame` 与 FL2VA 基座；保留独立五图 Ref2VA。仅尾图编号为 Picture 1，双图按首→尾为 Picture 1/2。
+- 图片状态、草稿、上传重试与待确认快照按模式隔离；确认阶段锁定图与参数。AI 接口验证模式/图数，接收同一生成帧数，说明首尾角色和最后一帧时刻；仍使用共享的表演与动作 skill。
+- 21 项可点击 `!` 说明包含用法、创作点子与限制，覆盖模式和所有创作设置。原生折叠、文本安全显示、至少 44px 触摸区、窄屏单列；修复静态发现的草稿错误跨页隐藏与双列教程过窄问题。
+- 实读核心版本仍为 **0.30.0**，不是用户资料假定的 v0.35.0。未升级/安装任何节点，未接入无限续接、音频参考、Full Previous Tail 或 AudioRefine；帮助不声称这些能力已可用，也不宣称首尾图逐像素无损或长链声音稳定。
+- 源码及运行目录 HTML/Python 分别补丁同步且文件摘要一致。保留 Turbo 8 步、原加速链/模型/时长/尺寸；8188 未重启、SSH 未操作，没有运行测试/语法检查/浏览器/API/网络/GPU或生成验证。下次由用户启动服务后加载，未声称公网已验证。
+- 详细合同、源码依据与未验证范围：[首尾帧与帮助接入记录](video-keyframes-help-20260911.md)。
+
+## 二十二、停止 YOLO 训练、接回 SSH 通道（2026-09-12）
+
+解除 §20.1 的“训练期间禁测停服”状态：用户要求停止 YOLO 训练并开启 SSH 通道。
+
+### 22.1 停止 YOLO 训练
+
+- 目标作业来自另一项目 `F:\python\yolo-sod`，由 `benchmark/analysis/supervise_training.py` 托管（`--out benchmark/results/lookahead_launch_20260911_000950/formal_job`），训练脚本 `train/v12/train_v12_lite_m_c3k2_batch3_fixed.py`，模型 `yolov12-sod-fusion-v6-lite-m-c3k2-lookahead-p4.yaml`，`epochs=1000 / batch=3 / imgsz=640`。
+- 停止时状态：始于 2026-09-11 00:18，进度 **epoch 191/1000（当轮 51%，1105/2157 it）**；`weights/` 内 `last.pt` 为 epoch 190 结束所写（12:07），每轮均有 `epochN.pt` 快照。
+- 处置：只杀训练进程（PID 42416 及其实例 PID 8204）。托管链（8112 → 39548）检测到子进程退出后自行结束，并写下 `formal_job/completion.json`（`returncode 4294967295`，即强制终止）。
+- 复查：所有 `yolo-sod` python 进程已消失；GPU 从 9816 MiB / 29% 降到 **1322 MiB / 3%**。代价是丢失 epoch 191 已跑的约一半（≤ 一轮，`last.pt` 之前的轮次都已落盘）。
+- 未改动 yolo-sod 的任何源码、配置或权重文件。
+
+### 22.2 SSH 通道实况：进程本来就在，缺的是本机服务端
+
+- 本机 `ssh.exe` **PID 22148 已经存活**：`-N -R 127.0.0.1:8188:127.0.0.1:8188 root@106.55.30.150`，`ServerAliveInterval=30 / ExitOnForwardFailure=yes`。
+- 云端 `/etc/caddy/Caddyfile` 的 upstream 是 **`127.0.0.1:8188`**（不是 §18.5 记录的 18188），与上述隧道映射一致；云端 `127.0.0.1:8188` 由 sshd（pid 3179865）监听，且存在来自本机公网 IP 的已建立 SSH 会话。
+- 因此外网 502 的原因不是通道缺失，而是**通道本机端 127.0.0.1:8188 没有服务**（§20.1 停服后一直未起）。按生产稳定栈启动本机 8188：`ComfyUI_sage3_py312/start_web_server.ps1`（`COMFY_SAGE3=0`，Turbo 8 步 + SolAttn + EasyCache，SDPA fallback，无 Sage2/Sage3）。
+
+### 22.3 验证（本轮无生成任务）
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `http://127.0.0.1:8188/video` | **200**（启动约 50s 后就绪） |
+| 云端 → 隧道 → 本机 `/video` | **200** |
+| 公网 `https://video.geekq.xyz:552/video` | **200** |
+| 公网 `https://video.geekq.xyz:552/h3/files` | **200** |
+| `/queue` | `queue_running: [] / queue_pending: []` |
+
+- 启动日志无 Sage3 行，节点含 `h3_web_queue`、`ComfyUI-MiniMax-H3-Turbo`、`ComfyUI-SolAttn_triton`。未提交任何生成任务，故未产生新的出片质量/速度数据，也不能据此宣称端到端出片已复测。
+
+### 22.4 发现的不一致（未改，待确认）
+
+- 启动脚本 `F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat` 仍映射 **`-R 127.0.0.1:18188:127.0.0.1:8188`**，而云端 Caddy upstream 现为 **8188**。若登录计划任务 `ComfyUI Cloud Tunnel` 拉起该脚本，新隧道会绑到云端 18188 → 外网仍 502。
+- 当前在跑的隧道是 8188 版本，所以现在没问题；这属于**潜在的不一致**。要么把 launcher 改回 8188，要么把 Caddy 改回 18188——本轮未动任何一侧，留待用户决定。
+
+## 二十三、网页时长选项扩到 5–15 秒（2026-09-12）
+
+用户要求把 `/video` 的时长上限从 8 秒提高到 15 秒。**改动只在前端**，后端与核心节点本来就已经支持到 15 秒。
+
+### 23.1 为什么后端不用改
+
+- `__init__.py` 的 `/h3/prompt` 帧数校验一直是 **`124 <= frame_count <= 362` 且 `frame_count % 17 == 5`**（第 425-427 行），即 5.17–15.08 秒，本来就没有卡在 8 秒。
+- 核心节点 `MiniMaxH3ImageToVideo.length` 的 tooltip 原文：`snapped up to the model's 17k+5 grid (124 = ~5s; trained range is ~124-362, longer is untested)` —— **362 帧就是模型训练区间上界**，所以 15 秒（15.08s）是"刚好用满"而不是超纲；节点自身 min/max 为 5/3600，不构成限制。
+- 因此本次只改了 `web/index.html` 里两处硬编码的上限：select 选项、`secondsFor()` 的 `Math.min(8, …)` 钳位。
+
+### 23.2 改动清单（`comfyui_download/h3_web_queue/web/index.html`）
+
+| 位置 | 改动 |
+|---|---|
+| 时长 select | 增加 9–15 秒共 7 个选项（原先 5–8） |
+| `secondsFor()` | `Math.min(8, Math.max(5,n))` → `Math.min(15, …)`（这是真正卡住 8 秒的地方） |
+| `framesForSeconds()` 注释 | 说明 5–15 秒与 362 帧上限 |
+| 帮助文案 4 处 | 「约 5–8 秒」等改为 5–15，并补一句 362 帧约 15.08 秒、时长越长等待越久 |
+| 设置区提示语 | 补「视频越长、清晰度越高，等待越久」 |
+
+- 文件同步到运行实例 `ComfyUI_sage3_py312/custom_nodes/h3_web_queue/web/index.html`，两处 SHA256 一致（`90a5dbc5…`）。按 §17.8，HTML 每次请求重读，**无需重启服务**即生效。
+- 未改后端、未改工作流模板、未改步数（仍 4–8 / 默认 8）、未改 SolAttn/EasyCache/Turbo 参数。
+
+### 23.3 秒数 → 帧数映射（用页面同一算法复算，11 项全部合法）
+
+| 选项 | 帧数 | 实际时长 | 选项 | 帧数 | 实际时长 |
+|---|---:|---:|---|---:|---:|
+| 5s | 124 | 5.17s | 11s | 260 | 10.83s |
+| 6s | 141 | 5.88s | 12s | 294 | 12.25s |
+| 7s | 175 | 7.29s | 13s | 311 | 12.96s |
+| 8s | 192 | 8.00s | 14s | 328 | 13.67s |
+| 9s | 209 | 8.71s | 15s | **362** | **15.08s** |
+| 10s | 243 | 10.12s | | | |
+
+- 落网格误差最大 0.35s（17 帧 = 0.708s 的半格），选项标签只是近似值，卡片上的「视频时长」按 `round(length/24)` 显示。
+- `/h3/prompt` 会把精确秒数写给 AI（`duration 15.083 seconds`、最后一帧在 15.042s），与标签并用。
+
+### 23.4 10 秒及以上禁用 720p（用户要求：会爆显存）
+
+用户直接给出约束：**≥10 秒选 720p 会超显存、跑不出来**。前端加规则，按**所选秒数**判定（10/11/…/15 全部锁定为 480p，5–9 秒仍可用 720p）。
+
+| 改动 | 说明 |
+|---|---|
+| `RES_MAX_SECONDS_720 = 9` | 唯一的阈值常量；`secondsFor() > 9` 即 10 秒及以上 |
+| `resFor()` | 取实际生效的分辨率：超限时把 720p 降级成 480p |
+| `syncResolution()` | 禁用 `#res` 的 720p 选项、把 select 拨回 480p、在 `#resNote` 显示原因；低于 10 秒时恢复 |
+| `dimsFor()` | 改为走 `resFor()`，**提交路径（工作流 width/height）自动跟着降级**，不依赖用户手动改 |
+| `refreshGo()` | 每次先 `syncResolution()`，所以提示条永远显示降级后的「标准」 |
+| 帮助文案 | `seconds` / `resolution` 两条都写明 10 秒及以上不能选高清 |
+
+- 待确认预览（`pendingOpts`）在点击时就用 `dimsFor()` 冻结，本来就是降级后的值；确认阶段无法改设置，不存在"改了秒数但提交旧分辨率"的窗口。
+- 这是**前端规则**，不是服务端硬校验：`/h3/prompt` 不收分辨率参数，工作流由浏览器提交，直接手搓 API 提交 720p+长片仍能绕过——与既有的公开 API 设计一致，本次未加服务端拦截。
+- 阈值按"选项秒数"而非帧数：9 秒实际是 209 帧（8.71s）仍允许 720p，10 秒是 243 帧（10.12s）起锁定 480p。若 209 帧 @720p 实测也不稳，需要再下调这个常量。
+
+### 23.5 验证范围（明确未做的事）
+
+- 已验证：页面源码改动、两处副本 SHA 一致（`3136b9ee…`）、`GET /video` 实际返回 11 个选项且钳位为 15、11 项映射在 `/h3/prompt` 校验内；抽出内联 JS 过 `node --check` 语法通过。
+- **已用真实浏览器验证 UI 行为**：8 秒 + 720p 正常；切到 12 秒后 720p 选项变灰、select 自动回到 480p、提示语出现；切回 8 秒后 720p 恢复可选。提示条在 6 秒显示「高清」、12 秒显示「标准」，说明降级确实生效到提交参数。
+- **未验证**：没有提交任何 10 秒以上的生成任务。本栈实际跑通过的最长是 **240→243 帧（10.1s，约 16 分钟，§16.13）**——注意那条正是 **480p**；362 帧约为其 2.9 倍 token（按 124 帧 15441、243 帧 30509 线性外推约 4.5 万 token），**耗时与显存均未实测**，不能据此宣称 15 秒 480p 可稳定出片。上线前建议先跑一条 15 秒验收。
+
+---
+
+## 二十四、TRELLIS.2 原生 3D 生成落地（2026-09-16）
+
+为 H3 视频之外增加**独立的 3D 生成能力**。起点是"几个大文件夹哪个不需要"这个清理问题，终点是原生 Trellis.2 在本机跑通。全程**不动生产 8188、不动 85 GB H3 共享模型库**。
+
+### 24.1 一个被推翻的判据：判"可删"不能只看生产用不用
+
+用户问 `comfyui_download/`、`ComfyUI_windows_portable/`、`ComfyUI_windows_portable_torch211_flash_test/` 中哪个不需要。
+
+- 我的初判：flash_test 副本可删 —— 依据是 §9–11 已判定 FlashAttention 不替换生产（组合链热启动反而慢 2.15 s）。
+- **用户纠正**：该副本是本机**唯一能跑 flash-attn 的运行时**（4080 上是 `flash_attn-2.8.3+cu130torch2.9.1-cp312` 对 torch 2.10 的 ABI 墙；本机 `flash_attn 2.9.0` 与 torch 2.11.0+cu130 精确匹配），且它的用途是 **3D 生成**，不是 H3。
+- 结论：**保留**。我漏掉的不是事实，是维度 —— "生产用不用"不等于"还有没有别的业务线要用"。
+
+### 24.2 模型目录解链/复链实况（含一次失败得恰到好处的操作）
+
+- 原 `flash_test/ComfyUI/models` 是指向 85 GB H3 共享库的**目录符号链接**。用 `rmdir` 解链（只删重解析点）：共享库仍 70 个文件，四个关键权重字节数逐一核对未变（`minimax_h3_fl2va_pruned_fp8_scaled` 20,958,205,608；`qwen3vl_32b_..._nvfp4_awq` 15,687,142,551 等）。
+- 我用 `mklink /D` 复链**失败**：git-bash 把 `/D` 当路径吞掉，报"无效语法"。**这个失败是对的** —— 该目录随后被放入 4 个 TRELLIS 权重，它应当是**独立目录**，不该再指回 H3 库。
+
+### 24.3 路线选择：原生 vs visualbruno（wheel 矩阵核查）
+
+手上的 4 个权重：`trellis_2_int8_convrot` 5,253,048,192 / `trellis_2_shape_vae_bf16` 1,095,844,024 / `trellis_2_texture_vae_bf16` 948,461,364 / `dino_v3_vit_l` 1,212,559,776。
+
+- 它们的 sha256 与 HF `Comfy-Org/TRELLIS.2`（官方仓库，`base_model: microsoft/TRELLIS.2-4B`，15.9 万下载）**逐字节一致**，目录结构也逐个对上 → 这是**原生 ComfyUI** 的官方料。**int8 是官方的**，不是替补。
+- `visualbruno/ComfyUI-Trellis2` 走不通：它要 `microsoft/TRELLIS.2-4B/ckpts/` 九组 bf16 分片（约 13.6 GB），现有文件一个都用不上；且 `nodes.py:28-35` 顶层**无条件**导入 `cumesh / o_voxel / nvdiffrast / flex_gemm`，而上游 `wheels/Windows/` 只有 **Torch270 / Torch280 / Torch2100**（无 torch 2.11）。
+- 原生路线不需要任何 CUDA 扩展：`comfy_extras/nodes_trellis2.py` 只导入 `comfy_api.latest`、`comfy.ldm.trellis2.*`、`comfy_extras.nodes_mesh_postprocess`、`torch`；`comfy/ldm/trellis2/flexgemm.py` 是 ComfyUI 自带的纯 PyTorch 稀疏卷积。模型走 `comfy.ldm.modules.attention.optimized_attention`，环境里的 flash-attn 自然生效。
+- **版本**：原生支持自 **v0.34.0** 起（v0.33.0 无此文件）。但 0.34→0.35 之间 `nodes_trellis2.py` 从 35 KB 长到 41 KB，其中一个提交是 **2026-09-03 "Lower peak trellis workflow vram and ram usage"** —— 对 16 GB 卡关键，0.34.0 **不含**。故选最新 release **v0.36.0（2026-09-15）**。
+
+### 24.4 环境置换与依赖
+
+宿主为可弃试验副本 `ComfyUI_windows_portable_torch211_flash_test`（py3.13.14 / torch 2.11.0+cu130 / flash_attn 2.9.0 / triton-windows 3.7.1.post27）。
+
+- 旧树 0.30.0 改名 `ComfyUI_bak_030`，放入 v0.36.0，运行时目录（`models/ custom_nodes/ input/ output/ user/ extra_model_paths.yaml`）按名搬回。
+- **坑**：ComfyUI 的 tag 压缩包**自带 `models/ input/ output/ custom_nodes/` 骨架目录**，直接 `mv` 旧目录进去会变成 `models/models`、`input/input` 这类嵌套。必须先把骨架合并或清掉再搬（本次是发现后逐个拍平）。
+- 依赖 dry-run 确认只动 8 个包：`comfyui-frontend-package 1.48.7→1.52.7`、`comfyui-workflow-templates 0.11.27→0.11.62`（含 `_json 0.1.27→0.1.85`）、`comfyui-embedded-docs 0.5.9→0.5.11`、`comfy-kitchen 0.2.26→0.2.34`、`comfy-aimdo 0.4.11→0.5.3`。**torch / torchvision / torchaudio / flash_attn / sageattention / triton-windows 一个都没动**（这是硬性判据）。
+- **关键点**：旧 `comfy-kitchen 0.2.26` 缺 `AsymW4A8Int8Layout`，而 0.36 的 `comfy/quant_ops.py` 无条件导入它 —— 不升级则 `_CK_AVAILABLE=False`，**int8 的 Trellis.2 根本加载不了**。这一步不是可选。
+
+### 24.5 权重目录与工作流
+
+权重按官方结构同卷改名摆放（不复制 8.3 GB）：
+
+```
+models/diffusion_models/trellis_2_int8_convrot.safetensors
+models/vae/trellis_2_{shape,texture}_vae_bf16.safetensors
+models/clip_vision/dino_v3_vit_l.safetensors
+```
+
+工作流是**手写 API 图**（后端没有 UI→API 转换器）：
+
+- 连线拓扑与 widget 取值**全部取自官方模板** `3d_pixal3d_trellis2_image_to_model.json`（随 pip 包落在 `comfyui_workflow_templates_json/templates/`），但删去 Pixal3D / MoGe / BiRefNet 三组本机没有的模型分支，以及两个 `ComfySwitchNode`（模板里该 switch 置 `true` 才走 Trellis.2，默认 `false` 走 Pixal3D）。
+- 节点签名以**运行中的 `/object_info`** 为准：18 个必需节点全部注册（`Trellis2Conditioning/ShapeStage/UpsampleStage/TextureStage`、`VaeDecode{Shape,Texture,Structure}Trellis*`、`EmptyTrellis2LatentStructure`、`ImageCropToMask`、`PaintMesh`、`SaveGLB`、`CFGOverride`、`RescaleCFG`、`ModelSamplingSD3` 等）。
+- 关键取值：结构阶段 `CFGOverride(cfg=1, 0.667→1)` → `RescaleCFG 0.7` → `ModelSamplingSD3 shift=5`，KSampler 12 步 / cfg 7.5 / euler+normal；形状阶段 `CFGOverride(0.769→1)` → `RescaleCFG 0.5`，20 步；高清阶段同链 12 步 / euler+simple；`Trellis2UpsampleStage.target_resolution=1536`；**贴图阶段用裸 UNET**（不过 CFG 链）12 步 / **cfg 1.0**。
+- 文件：`workflows/trellis2_i2m_shape.json`（只出形状）、`workflows/trellis2_i2m_textured.json`（完整）。提交脚本 `ComfyUI_windows_portable_torch211_flash_test/submit_8199.py`（**端口 8199**；`comfyui_download/submit_prompt.py` 硬编码生产 8188，不可复用）。
+
+### 24.6 实测结果
+
+启动参数：`--port 8199 --disable-all-custom-nodes --lowvram --reserve-vram 0.5`。`--lowvram` 取自 4080 机器 2026-09-12 serving audit 里 `low_vram=true` 跑通 TRELLIS.2 的先例（同 16 GB 卡）；该 audit 还用 `sdpa` 后端跑通，说明 **flash-attn 只是优化项而非必需**（`--use-pytorch-cross-attention` 可强制回退）。
+
+| 运行 | 提交 ID | 服务端耗时 | 产物 | 三角面 | 顶点属性 |
+|---|---|---:|---|---:|---|
+| 形状分支（冷，含模型加载） | `dfa37136` | **112.57 s**（API 侧 115.2 s） | `3d/trellis2_shape_00001_.glb` 264,130,396 B | 14,728,506 | `POSITION` |
+| 完整带贴图（热） | `9a0ceff4` | **62.64 s**（API 侧 65.3 s） | `3d/trellis2_textured_00001_.glb` 351,515,668 B | 14,728,506 | `POSITION + COLOR_0` |
+
+- 模型加载正常：日志 `Model Trellis2 prepared for dynamic VRAM loading. 5004MB Staged`；显存峰值 **10.3 GB / 16.3 GB**，`--lowvram` 下未 OOM。
+- 结构 12 步（≈5 s）→ 形状 20 步（≈5 s）→ 高清 12 步（7.72 s/it，≈93 s）→ 贴图解码/上色。**贴图阶段明显慢于形状阶段**，是当前墙钟主要来源。
+- 贴图以**逐顶点色 `COLOR_0`** 烘焙（`materials=1`、`textures=0`），这是 `PaintMesh` 的方式，不是缺贴图。
+- 两次运行（形状分支与完整分支）产出的形状**文件等大、面数相同**，同 seed 可复现。
+
+### 24.7 验证方式（沿用本项目铁律：不看 `status_str`）
+
+- **主判据**是磁盘 mtime 差集：`output/3d/trellis2_shape_00001_.glb` mtime `2026-09-16 23:56:03`、`trellis2_textured_00001_.glb` mtime `23:57:34`，均晚于各自提交时刻；提交前 `output/3d/` 为空。
+- GLB 用**纯 stdlib** 解包校验：`magic=b'glTF'`、`version=2`、`meshes=1`、面数 10⁵–10⁶ 量级、包围盒落在合理范围（`[-0.500,-0.497,-0.065] → [0.499,0.492,0.074]`，X/Y 已归一化）。
+- 日志交叉检查：无 traceback / OOM / NaN；`Mask for the image is empty` 计数 **0**（示例图带真 mask，`ImageCropToMask` 未走整幅裁剪回退）。
+
+### 24.8 生产未动的证明
+
+| 检查 | 变更前 | 变更后 |
+|---|---|---|
+| `ComfyUI_sage3_py312/comfyui_version.py` | 131 B / mtime 1787648546 | 同 |
+| `ComfyUI_windows_portable/ComfyUI/comfyui_version.py` | 131 B / mtime 1785725717 | 同 |
+| 8188 监听 PID | 18436 | 18436 |
+| 共享模型库文件数 | 70 | 70 |
+| H3 权重大小/日期 | fl2va / ref2va 20,958,205,608（2026-08-05） | 同 |
+
+### 24.9 明确未做/未验证
+
+- **没有做目视渲染检查**。结构与统计指标正常，但包围盒 **Z 向偏薄**（`-0.065 ~ +0.074`，而 X/Y 为 ±0.5）—— 对该输入（"viking wolf rune axe"，板状斧符）可能本就如此，也可能是形状阶段欠收敛，**未确认**。
+- 面数 14.7M 对预览/减面/打印都过大，**减面未做**。
+- 只测了**一张**官方示例图，未做多图/多题材回归；也未测 `target_resolution` 降到 1024 的速度与画质权衡。
+- 未验证该环境在 0.36.0 下是否仍能承载 §9–11 的 H3 FlashAttention 对照实验（0.36 重构了 `comfy/ldm/minimax/model.py`）。该环境本就是可弃副本，H3 相关一律回 `ComfyUI_sage3_py312`。
+
+### 24.10 复现与回滚
+
+```bash
+S=/f/python/h3/ComfyUI_windows_portable_torch211_flash_test
+cd "$S"
+./python_embeded/python.exe -s ComfyUI/main.py --port 8199 --listen 127.0.0.1 \
+  --disable-all-custom-nodes --lowvram --reserve-vram 0.5
+./python_embeded/python.exe -s submit_8199.py F:/python/h3/workflows/trellis2_i2m_textured.json
+```
+
+- 回滚代码：`mv ComfyUI ComfyUI_036_attempt && mv ComfyUI_bak_030 ComfyUI`，再把运行时目录搬回。
+- 回滚依赖：`pip install comfy-kitchen==0.2.26 comfy-aimdo==0.4.11 comfyui-frontend-package==1.48.7 comfyui-workflow-templates==0.11.27 comfyui-embedded-docs==0.5.9`，与 `pip_before_trellis2.txt` 对 diff 应为空。
+- 停服只停 8199 的 PID，**不要碰 8188**。
+
+### 24.11 教训
+
+1. **"生产用不用"不是判断一个环境/目录去留的唯一维度。** 漏掉"某条业务线只有它能跑"这一维，就会给出错误的删除建议。
+2. **第三方节点的"要装什么"要读到 import 层。** `nodes.py:28-35` 的顶层无条件导入，决定了整条路线是否可行 —— 这比读 README 的安装说明更早、更硬。
+3. **官方包与第三方节点可能互不通用。** 同一模型的不同封装对应**完全不同的权重目录结构**（`ckpts/` 九组 bf16 vs `diffusion_models + vae + clip_vision`），先核对 sha256 再谈方案。
+4. **发布包的骨架目录会咬人。** `mv 旧目录 新目录` 在目标已存在同名目录时会静默嵌套，事后要靠 `ls` 才发现。
+5. **"刚好够用"的版本可能缺关键修复。** v0.34.0 是引入 Trellis.2 的最低版本，但 9-03 那版降显存提交才是 16 GB 卡的可用性前提 —— 定版本要查提交史，不能只看"首次支持"。
+
+---
+
+## 二十五、接回 SSH 反向隧道，恢复公网（2026-09-17）
+
+用户要求 "start ssh server"。经确认指的是**恢复 SSH 反向隧道**（不是在本机装 Windows OpenSSH Server）。
+
+### 25.1 起点状态
+
+| 检查 | 结果 |
+|---|---|
+| 本机 8188 | **在跑**（PID 12360，16:09:57 启动） |
+| `ssh.exe` 进程 | **0 个** → 隧道断 |
+| 云端 `/etc/caddy/Caddyfile` | upstream **`127.0.0.1:18188`**（`/`、`/comfyui/*`、默认全部指向 18188） |
+| 云端 `18188` 监听 | **无** → 公网应为 502 |
+| 本机 OpenSSH **Server** | **未安装**（`C:\Windows\System32\OpenSSH\` 只有客户端；无 `sshd` 服务，只有 `ssh-agent` 且 Disabled） |
+
+### 25.2 处置（未改任何脚本/配置）
+
+隐藏窗口启动现有 launcher：`cmd /d /c F:\python\llamacpp\deploy-cloud\start-comfyui-cloud.bat`。
+
+- 该脚本先探测 8188，**已监听 → 跳过启动 ComfyUI**，直接进入 `-R 127.0.0.1:18188:127.0.0.1:8188 root@106.55.30.150` 的断线重连循环。
+- 产物：watchdog `cmd` PID **15052** + 隧道 `ssh` PID **17160**（`ServerAliveInterval=30 / ServerAliveCountMax=3 / ExitOnForwardFailure=yes`）。
+- 运行中的 8188 进程是 system `Python312\python.exe`（不是 launcher 的 `venv\Scripts\python.exe`），但因 8188 已在监听，launcher 不会重复起第二个实例。
+
+### 25.3 验证（本轮无生成任务）
+
+| 检查 | 结果 |
+|---|---|
+| 本机 `http://127.0.0.1:8188/video` | **200** |
+| 云端 `127.0.0.1:18188` 监听 | **有**（`sshd` pid 1690641，即隧道反向端口） |
+| 云端 → 隧道 → 本机 `/video` | **200** |
+| 公网 `https://video.geekq.xyz:552/video` | **200** |
+| 公网 `/h3/files` | **200** |
+| 公网 `/` | **302**（→ `/video`，与既有设计一致） |
+| 公网 `/comfyui/` | **401**（编辑器 Basic Auth，符合预期） |
+| `/queue` | `queue_running: [] / queue_pending: []` |
+
+### 25.4 §22.4 记录的端口不一致已闭合
+
+当时 Caddy 是 8188、launcher 是 18188，属"潜在不一致"。**本次实查两边都是 18188**，映射一致，无需再改任一侧。
+
+### 25.5 明确未做
+
+- **没有安装 Windows OpenSSH Server**（需管理员提权；当前会话 `IsInRole(Administrator) = False`）。本机仍无 22 端口监听，无法从外部直接 SSH 登录本机。
+- 未改 launcher、未改云端 Caddyfile、未改登录计划任务 `ComfyUI Cloud Tunnel`（保持 Ready）。
+- 未提交任何生成任务，故无新的出片速度/质量数据。
+
+---
+
+## 二十六、网页新增「参考视频」（R2V）（2026-09-17）
+
+用户要求给 `/video` 加参考视频。三个已确认的设计决定：
+
+1. **独立的第四个页签「参考视频」**，该页只用视频、不与图片混用；
+2. **「同时参考视频自带的声音」默认关闭**，勾选才把音轨接进 `ref_video_audios`；
+3. **加速 LoRA 保留不动**——仍走 Turbo v4 EMA + Turbo Sampler + 8 步 + SolAttn + EasyCache，只把 UNET 换成 ref2va 权重。
+
+### 26.1 先弄清的三件事（都读了源码，不是推测）
+
+- **上传不用新路由**：`server.py:397-467` 的 `/upload/image` 既没有扩展名白名单也没有内容类型校验，任何文件都会写进 input 目录（aiohttp 单请求上限 100 MB）。mp4 直接走它。
+- **`LoadVideo` 的取值必须是顶层裸文件名**：它的 options 来自非递归 `os.listdir`，而 API 提交时 combos 会逐字校验（`execution.py:1047-1080`），带子目录只会得到难懂的 `Value not in list`。
+- **节点几乎不校验任何 R2V 限制**：2–15 秒、23.976–60 FPS、≤50 MB、256–5760 px、9/3/3/12 的数量上限，**代码里一条都没有**（只有「至少 5 帧」会真的抛错）。这些校验只能我们自己加。
+
+### 26.2 裁剪公式：先测再写
+
+节点会把参考视频**截断到成片帧数**（`nodes_minimax_h3.py:245-247`），并且把帧序**当作 24 fps**消费。所以多解码的帧纯属浪费：15 秒 1080p60 不裁的话，`GetVideoComponents` 会先堆出约 900 帧，仅 float32 就是 20 GB 量级。
+
+在 `Video Slice` 里用 **D = (帧数 + 16) / fps**（再取 min(D, 文件时长, 15)）。先跑纯 CPU 实测（`CUDA_VISIBLE_DEVICES=""`，不碰 GPU）：
+
+| 参考视频 | 出片 124 帧 | 出片 362 帧 |
+|---|---:|---:|
+| 23.976 / 24 / 25 / 30 / 50 / 60 fps（150 帧素材） | 解码 **140 帧**（全频段一致） | 文件越界则取满 |
+| 60 fps × 900 帧（15 秒） | **140**（不裁是 900，省 6.4×） | 378 |
+| 24 fps × 50 帧（短于 D） | 50（`strict_duration=false` 不报错） | 50 |
+| 24 fps × 4 帧 | 4（节点会抛「至少 5 帧」） | 4 |
+
+`+16` 的余量留给 pts 取整。1080p 源下 140 帧 ≈ 3.3 GiB、378 帧 ≈ 8.9 GiB（都在缩放之前），这个数字写进了页面帮助。
+
+### 26.3 后端（`h3_web_queue/__init__.py`）
+
+- 新增 `POST /h3/videoinfo {name, frame_count}`：pyav 读 `{fps, duration, width, height, has_audio, codec, frame_count, size, visible_seconds, problems}`；沿用输入目录越界检查；`fps` 取 `average_rate`，为 None/非正数回退 24（VFR 文件返回 None，不兜底就会把 `null` 当裁剪时长传给节点）。`has_audio` 用 `any(s.codec_context is not None …)`，对齐 `video_types.py:65-74`。
+- `/h3/prompt` 接受 `video_names`（≤3）与 `video_sounds`（等长布尔数组）；**Ref2VA 的图片数下限从 1 改为 0**，改由「图片+视频至少一个」把关；非 Ref2VA 带视频直接拒绝。
+- **修了一个结构性 bug**：原来整套 Ref2VA 模式说明和素材清单都包在 `if image_names:` 里，**纯视频的 Ref2VA 会一条模式指令都拿不到**。改为按实际素材拼清单。
+- 视觉分析扩到视频：pyav 每段抽 3 帧（≤512 px JPEG）并入**同一个有序请求**，标签 `<Video N> 第 X.XX 秒`；系统提示明确区分「<Picture N> 是独立图片」与「<Video N> 是同一段视频的按序抽帧」。
+- 音轨标签**逐段写死**：只有「用户勾选 **且** 文件确有音轨」的那几段才产生 `<Audio j>`，并按节点实际发射顺序说明（音轨标签排在它对应视频之前）。
+
+### 26.4 前端（`web/index.html`）
+
+- 新增第四个页签与面板（`#tab-video`/`#pane-video`）+ 5 条帮助（`HELP` 由 `[data-help]` 扫描渲染，加键即可）。`PANES` 加 `"video"`；链式三元改成 `PANE_TEXT_ID`/`PANE_AI_ID` 映射，避免四处漏改。
+- **修掉一处跨页串台**：原来的 `var imgMode = activePane !== "text"` 会让**从视频页点生成时把图片页已选的参考图一起传进去**，且不报错。改为显式按页签取素材。
+- 图接线（每段视频 3 个节点）：`LoadVideo → Video Slice → GetVideoComponents`，`ref_videos.ref_video_N` 取槽 0；勾选声音且确有音轨时才写 `ref_video_audios.ref_video_audio_N` 取槽 1；**没有音轨时整个键都不写**（schema 默认物化成空 dict，节点走 `is not None` 分支）。
+- 上传沿用 `/upload/image`，但**单段上传超时放宽到 300 秒**（公网经隧道传 50 MB 必然超过原来的 20 秒），并对视频断言 `!up.subfolder`。
+- 草稿与待确认：`pendingOpts` 增加 `pane` 判别字段（图片页和视频页同为 Ref2VA，不能只看 modeVal）；视频记录额外持久化 `fps/duration/size/info`，否则恢复后重建不出裁剪窗口与音轨决策。
+- **参考视频页固定 480p**：参考帧与参考图一样参与每一步采样，而 720p 的 9 秒上限是按「没有参考视频」的显存预算定的，带参考的 720p 显存占用尚未实测。
+
+### 26.5 验证（全部 CPU，零 GPU 占用）
+
+- **离线后端校验**：用假 `server`/`folder_paths` 桩导入模块，直接调用新 helper 与两个路由 —— **ALL PASS**。含：真实带音轨成片（`web_mty065eaejl0`，24 fps / 10.125 秒 / 864×480 / has_audio=True）的抽帧、路径越界拦截、1 秒与超量拒绝、纯视频 Ref2VA 拿到六段式指令、静音视频勾选声音时**不虚构** `<Audio 1>`、带音轨视频正确标注。
+- **节点 schema 实测**：`curl -F` 传 mp4 到 `/upload/image` → 返回裸名且立刻出现在 `LoadVideo` 的 options 里（每请求重读 `object_info`）；`Video Slice` 四个输入确为 required。
+- **浏览器集成测试**：拦截 `fetch` 模拟重启后的后端，走完整流程（选文件 → 上传 → videoinfo → 准备 → 确认），抓到真实提交的图 JSON：`cond=MiniMaxH3ReferenceToVideo`、`ref_videos.ref_video_0=["refvid_demux_0",0]`、`ref_video_audios.ref_video_audio_0=["refvid_demux_0",1]`、`LoadVideo.file` 为裸名、`Video Slice {duration:5, strict_duration:false}`、UNET 为 ref2va 权重、**turbo_lora v4 step600 EMA 与 8 步原样保留**。测试写入的 localStorage 与 input 目录残留已清理。
+- 内联 JS 过 `node --check`；源码副本与运行副本 `__init__.py`/`index.html` SHA256 一致。
+
+### 26.6 明确未做 / 需要用户侧动作
+
+- **没有跑任何真实生成**（用户明确表示出片测试由他自己做）。因此「参考视频确实影响出片」「音轨被真正参考」「1/2/3 段 × 124/243/362 帧的显存实测」**均未验证**。
+- **后端改动要重启 8188 才生效**：路由在 import 时注册，没有热重载。本文档落笔时 `/h3/videoinfo` 仍返回 405（运行进程加载的还是旧模块）；HTML 是每请求重读，已经生效。页面在这种情况下会明确提示「当前服务还没加载参考视频接口，重启 ComfyUI 后才会生效」，不会静默出错。
+- 不接独立参考音频（`ref_audios`）；参考视频页不与图片混用；上传到 `input/` 的素材没有回收机制。
+- 已知物理限制（写进了页面帮助）：参考按 24 fps 消费，60 fps 素材动作会慢 2.5 倍；参考只取到成片帧数为止；节点把参考缩到 768 短边，传 1080p 只是白吃内存。
+
+### 26.7 重启生效与活体验证（2026-09-17，用户要求重启）
+
+队列为空时按 `start_web_server.ps1`（`COMFY_SAGE3=0`）重启本地 8188：停掉 venv 启动器 pid 20396 与它拉起的基础解释器 pid 12360（两者同一时刻创建，8188 实际由后者持有），端口释放后重新拉起，**约 16 秒就绪**。
+
+| 检查 | 结果 |
+|---|---|
+| `POST /h3/videoinfo`（不存在的文件） | **400**「file not found in input directory」（重启前是 405，说明路由已注册且越界校验生效） |
+| `POST /h3/videoinfo`（真实成片 `web_mty065eaejl0`，243 帧） | `fps 24 / duration 10.125 / 864×480 / has_audio true / visible_seconds 10.125 / problems []` |
+| `/h3/prompt` 纯视频 Ref2VA 带 `video_sounds:[true]` | **200**，返回以 `subject_definitions:` 开头、正文引用 `<Video 1>` 的六段式提示词（真实调用 DeepSeek，含抽帧视觉分析） |
+| `/h3/prompt` 校验：Ref2VA 无素材 / T2VA 带视频 | 分别 400「至少需要一张参考图片或一段参考视频」「只有参考模式支持参考视频」 |
+| 启动日志 | `h3_web_queue`、`ComfyUI-MiniMax-H3-Turbo`、`ComfyUI-SolAttn_triton` 均加载；无 traceback、无 Sage 行 |
+| 公网（经隧道）`/video`、`/h3/files` | **200 / 200**；隧道 `ssh.exe` 17160 与 watchdog 15052 全程未受影响 |
+
+测试用的 `input/live_probe.mp4` 已删除。仍然**没有跑任何真实生成**——出片验收（参考视频是否真正影响结果、音轨是否被参考、各帧数下的显存占用）仍留给用户自己测。
+
+### 26.8 参考视频页支持同时带参考图片（2026-09-17，用户追加要求）
+
+用户要求「参考视频 同时也要有参考图片」，即两类素材在同一次 Ref2VA 请求里混用（推翻了 §26 里“每页只放一种素材”的取舍）。
+
+**后端不用改**：Ref2VA 的数量规则本来就是「图片 0–5 且视频 0–3 且合计 ≥1」，`_describe_assets()` 也已经在同一个有序视觉请求里同时处理图片与视频抽帧。
+
+前端改动（`web/index.html`）：
+
+- 参考视频页新增「参考图片」区块（`#refimg-v` / `#refpreviews-v` / `#clearimg-v` / `#ref-count-v` / `#ref-error-v`），规则与“参考图片”页相同（≤5 张、合计 ≤32 MB），但**列表与提示各自独立**——不会被另一个页签带过去。帮助键新增 `video-refs`。
+- `canGenerate()` 改为「有视频 **或** 有图片」即可（该页现在是图片参考的超集），提示语相应调整。
+- 草稿新增 `videoImages` 字段；恢复逻辑抽出 `restoreRefList()` 供两个页签共用，并且**待确认任务只恢复到它所属的页签**（`pending.pane` 判别）。
+- 帮助文案同步：说明图片给主体/风格、视频给运镜/节奏，两类编号各自从 1 开始。
+
+**顺带修掉上一轮引入的回归**：§26 把 `imgMode` 从 `activePane !== "text"` 改成 `pane === "img"` 之后，`if (imgMode)` 包住的上传循环**不再为首尾帧页上传图片**——首尾帧提交会在图里留下一个没有 `image` 的 `LoadImage`，直接报错。现已把上传循环改为按 `refsForSubmit.length` 驱动（首尾帧/参考图/参考视频三页共用），并用浏览器回归确认首尾帧恢复为 `MiniMaxH3ImageToVideo + first_frame + fl2va 基座`。
+
+**验证**（仍为零 GPU 占用，用拦截 `fetch` 的浏览器全流程 + 真实后端校验）：
+
+| 检查 | 结果 |
+|---|---|
+| 参考视频页：1 视频 + 1 图 + 勾选声音 | 同一个 `MiniMaxH3ReferenceToVideo` 上同时出现 `ref_images.ref_image_0`、`ref_videos.ref_video_0`、`ref_video_audios.ref_video_audio_0` |
+| 裁剪时长（124 帧、容器 24 fps） | `5.833 = (124+16)/24` |
+| 首尾帧页（仅首帧） | `MiniMaxH3ImageToVideo` + `first_frame` + `fl2va` 基座，Turbo 8 步保留 |
+| 真实后端混合请求（1 图 + 1 视频 + 声音） | 200，`vlm_error: None`，返回提示词同时含 `<Picture 1>`、`<Video 1>`、`<Audio 1>` |
+| 内联 JS / 帮助键 | `node --check` 通过；无缺失、无未使用的 `data-help` 键 |
+| 两份副本 | `__init__.py`（未改）与 `index.html` SHA256 一致 |
+
+随后按用户要求自行重启：停旧进程 → `start_web_server.ps1`（`COMFY_SAGE3=0`）→ **约 8 秒就绪**；启动日志无 traceback、无 Sage 行；本机与公网 `/video` 均 200，公网页面已包含新的「参考图片（选填，最多 5 张）」区块；隧道 `ssh.exe` 17160 未受影响。测试上传的三个文件已从 `input/` 删除。
+
+仍然**没有跑任何真实生成**——出片验收留给用户。
+
+---
+
+## 二十七、生产迁移：sage3 → portable，事故复盘（2026-09-21）
+
+一次**误操作引发的生产事故**，以及由此完成的架构回退。最终只保留一个 **H3 生产实例目录**（`ComfyUI_windows_portable`），删除 `ComfyUI_sage3_py312`；独立的 `ComfyUI_windows_portable_torch211_flash_test` 仍作为非生产的 TRELLIS / FlashAttention 测试环境保留。
+
+### 27.1 事故：误用"剪切"把 venv 剥成了空壳
+
+用户本意是复制，误用了剪切。结果 `ComfyUI_sage3_py312\venv` 里 **17 个包的纯 Python 部分被整体剥离**，只留下原生二进制：
+
+| 包 | 剩下 | 丢失 |
+|---|---|---|
+| **torch** | `_C.cp312-win_amd64.pyd` + `lib\`（2.63 GB / 37 个 DLL） | **`__init__.py` 与全部 `.py` 模块** |
+| PIL / scipy / safetensors / tokenizers / yaml | 只有 `.pyd` | 全部 Python 源码 |
+| pydantic_core / psutil / regex / multidict / frozenlist / greenlet / kornia_rs / markupsafe / propcache / yarl / torchvision | 只有 `.pyd` | 同上 |
+
+**`pip` 也没了**（`No module named pip`），所以**无法原地修复**。
+
+**最危险的一点**：8188 生产实例**仍在正常服务**（模块已载入内存），`/video` 返回 200、队列正常 —— 但**一旦重启就再也起不来**。这是一具"活尸体"。同一时间公网是 502，但那是 SSH 隧道断了（与本事故无关）。
+
+**判据纪律**：判断一个环境是否可用，要**实际执行**而不是看进程是否存在。`python.exe -c "import torch"` 立刻暴露了问题。
+
+### 27.2 关键判断：不需要"重建 venv"
+
+用户最初的方案是"重建 venv"，但勘察后发现**没有必要**：
+
+| 判据 | 证据 |
+|---|---|
+| `portable\python_embeded` **完好** | 扫描 0 个被剥离的包 |
+| 依赖齐全 | `av` / `sageattention` / `torchsde` / `transformers` / kornia 等全部 `OK` |
+| triton 工具链**已就绪** | `Include\` + `python313.lib` 存在，`driver.CudaUtils()` → **BUILD OK** |
+| ComfyUI 树同源 | `execution.py` / `nodes.py` / `server.py` 与 sage3 **逐字节相同**（都是 0.30.0） |
+| 模型库就在这 | 85 GB / 70 文件已就位 |
+
+**而且它本来就是生产环境** —— §12.1 记录的原始生产就是 `ComfyUI_windows_portable`（ComfyUI 0.30.0 / Torch 2.13），§14.2 才切到 sage3。所以这是**回到曾经验证过的配置**。
+
+关于 `triton-cuda-utils-fix` 记忆：它要求的修复**早已应用**且实证有效——`comfyui_run9.log`（修复前）有 **50 处** `tcc.exe ... returned non-zero exit status 1); falling back`，修复后的 `comfyui_run10.log` **零失败**并打出 `[sol_attn] sparse (1, 15441, 56, 128) tau=1.3 int8 pointer`。本次无需重做。
+
+### 27.3 四个阻断点（都是实测发现，不是推测）
+
+**B1. Turbo LoRA 不在 portable**
+`portable\ComfyUI\models\loras\` 只有 `put_loras_here`。`MiniMaxH3TurboLoRA` 走 `folder_paths.get_full_path("loras", ...)`，**缺文件即硬报错**。从 sage3 复制 `minimax_h3_turbo_v4_step600_ema.safetensors`（779,849,816 B）解决。
+
+**B2. `h3_web_queue` 路径常量在 portable 下错位**
+`__init__.py:53` 是 `PROJECT_ROOT = NODE_ROOT.parents[2]`：
+
+| 树 | `parents[2]` | `.env` | skill |
+|---|---|---|---|
+| sage3 | `F:\python\h3` | ✅ | ✅ |
+| portable | `F:\python\h3\ComfyUI_windows_portable` | ❌ | ❌ |
+
+失败是**运行期**的：`_load_env` 静默返回 → DeepSeek 改写失效；`_skill_prompt()` 直接抛异常。
+→ 改为 `parents[3]`。**对照**：portable 自己的 `h3_deepseek_prompt` 用的就是 `parents[3]`（正确），说明脚本当年是照着 sage3 的位置写的。实测验证：`parents[3]` → `F:\python\h3`，`.env` 与 skill 都在。`COMFY_ROOT = parents[1]` 不用改，它正好指向 portable 的 ComfyUI 根。
+
+**B3. `extra_model_paths.yaml` 缺模型映射**
+portable 原来只有 `example_nodes` 一项。补回 `diffusion_models` / `text_encoders` / `vae` 三项（`base_path: .`）。
+
+**B4. `example_nodes` 映射引发 `PackedLayout` patch 冲突**（本次最隐蔽的一条）
+`example_nodes -> ../../example` 会加载 `F:\python\h3\example\ComfyUI-H3-Motion-Context`，其 `patch_layout.py` **wrap 的正是 `mm.PackedLayout.__init__`** —— 而 `ComfyUI-SolAttn_triton\_morton_h3.py` 在 **import 时**就 patch 同一个类。
+
+`patch_layout.py:498` 的 `_already_patched()` 在发现"外来"包装时返回 `"foreign"` 并**放弃安装**。因为 SolAttn 在 import 时先手、Motion Context 是首次运行节点时才 patch，**结果只取决于导入顺序** —— 这是侥幸，不是设计。
+
+**查证生产图是否真的需要它**：
+
+| 来源 | 节点类型 |
+|---|---|
+| 生产 API 模板（16 类） | `BasicGuider, BasicScheduler, CLIPLoader, CreateVideo, EasyCache, MiniMaxH3ImageToVideo, MiniMaxH3TurboLoRA, MiniMaxH3TurboSampler, RandomNoise, SamplerCustomAdvanced, SaveVideo, SolAttnPatch, UNETLoader, VAEDecode, VAEDecodeAudio, VAELoader` |
+| 两个可视化图 | 各 5 个节点 |
+
+**没有一个来自 `example/`**（无 KJNodes / rgthree / Motion Context）。
+→ **移除 `example_nodes` 映射**，隐患消除且零成本。同时把备份目录 `_SolAttn_bak_before_26d816e` **移出 `custom_nodes`** —— 它之前被当成节点加载了（`Attention function sol_attn already registered, skipping` 就是它撞的），现位于 `F:\python\h3\_solattn_backup\`。
+
+### 27.4 迁移清单与脚本改动
+
+**搬入 portable**：Turbo LoRA、`h3_web_queue`、`ComfyUI-MiniMax-H3-Turbo`（含 `.git`）、`ComfyUI-SolAttn_triton`（**26d816e 覆盖旧快照**，`_SKIP_LAYOUT_PATCH` 补丁保留）、`cloud_h3_sage3_solattn_easycache_prompt.json`、2 个可视化工作流、29 个 mp4 + `webmeta.json`（44 条，逐条一致）。
+
+**不改动**：`h3_deepseek_prompt`（portable 的已是正确版本）。
+
+**脚本**：新建 `ComfyUI_windows_portable\start_web_server.ps1`（PY 改为 `python_embeded\python.exe`、工作目录改为 `...\ComfyUI`）；`start-comfyui-cloud.bat` 的 `COMFY_ROOT` 与启动行（原来写死 `%COMFY_ROOT%\venv\Scripts\python.exe`）都改为 portable。
+
+### 27.5 并排验证：在尸体仍服务时先证明新栈可用
+
+**没有先停服再试** —— 而是在 **8189** 端口并排起新栈（尸体继续服务 8188），跑**真实生产图**。
+
+**验证结果**：
+
+| 项 | 值 |
+|---|---|
+| 运行时 | ComfyUI 0.30.0 / **py 3.13.14** / **torch 2.13.0+cu130** / sm_120 |
+| 提交 | `c6b7d2e8-8fa3-4e4c-92d1-a6b696066960`，`RandomNoise` seed 改 98765 破执行缓存 |
+| 产物 | `MiniMax_H3_Turbo_v4_SolAttn_EasyCache_00001_.mp4`，**1,619,950 B** |
+| 磁盘判据 | mtime `1789961553` **晚于**提交时刻 `1789961088` |
+| 媒体 | h264 / **864×480** / **124 帧** / 5.167s + aac / **32kHz** / 双声道 |
+| Turbo LoRA | `pruned base [bypass]`，**208 backbone adapters + 51 adaln 注入** |
+| EasyCache | threshold 0.3 / 0.2–0.9 启用 |
+| 错误 | traceback **0** / CUDA error **0** / OOM **0** |
+
+**SolAttn 内核确实执行了**（独立于日志的证据）：
+生产模板里 `verbose: false`，所以 `[sol_attn] sparse` **本来就不打印**（sage3 日志里同样为空，已对照）。因此改用 triton 编译缓存作证据：
+
+```
+C:\Users\SHUAIBI\.triton\cache\  Sep 21 11:29–11:30 新增多条
+  └─ _forward_int8_ptr.cubin / .ptx / .llir / .json / .autotune.json
+```
+
+`_forward_int8_ptr` 正是 SolAttn 的 **INT8 pointer 稀疏内核**（对应模板的 `int8_qk: true`），时间戳与运行窗口吻合。
+
+**教训：日志里没打印 ≠ 没执行。** 判据要**独立于日志** —— 本次靠 triton 编译缓存坐实。
+
+### 27.6 切换与收尾
+
+| 步骤 | 结果 |
+|---|---|
+| 停尸体（PID 21040 + 启动器 20840） | 8188 释放 |
+| portable 起于 8188 | **30 s 就绪**，`/video` 200 |
+| 运行时复验 | py 3.13 / torch 2.13；`Using pytorch attention` = 1 |
+| **sage 守卫** | `Using sage attention` = **0**、`SageAttention3` = **0** |
+| 节点加载 | 6 个全是生产所需，`h3_motion_context` = **0** |
+| `h3_web_queue` 路由 | `/video` 200、`/h3/files` 200 |
+| SSH 隧道 | 起于 PowerShell `Start-Process`（PID 33188） |
+| 公网 | `/` 302、`/video` **200**、`/h3/files` **200** |
+| 删除 sage3 | 回收 **3.8 GB**，F: 余 78 GB |
+
+**隧道启动踩的坑**：`cmd start /min` 启动的窗口没存活（ssh.exe = 0）。直接用 `timeout 20 ssh ...` 测试时看到 `remote forward success for: listen 127.0.0.1:18188, connect 127.0.0.1:8188` 且认证通过 —— 说明**隧道配置本身没问题**，退出只是被 `timeout` 杀掉的。改用 PowerShell `Start-Process -WindowStyle Hidden` 后稳定运行。
+
+### 27.7 结果与提醒
+
+**最终只保留一个 H3 生产实例目录**：`ComfyUI_windows_portable`（含 85 GB 模型库 + 生产 ComfyUI + py3.13/torch2.13 运行时）。`ComfyUI_sage3_py312` 已删除；`ComfyUI_windows_portable_torch211_flash_test` 仍是独立的 TRELLIS / FlashAttention 测试环境，不能误称为已删除。
+
+> **本条取代全书既有的 `ComfyUI_sage3_py312` 指向。** §12–§26 里凡是"生产 = `ComfyUI_sage3_py312` / 8188 由 venv 启动 / `start_web_server.ps1` 在 sage3 目录"的描述，**自本节起均以 portable 为准**：
+> - 生产根目录 → `F:\python\h3\ComfyUI_windows_portable`
+> - 解释器 → `python_embeded\python.exe`（不再是 `venv\Scripts\python.exe`）
+> - 工作目录 → `...\ComfyUI`（不再是根目录）
+> - 启动脚本 → `ComfyUI_windows_portable\start_web_server.ps1`
+> - 日志 → `ComfyUI_windows_portable\cloud_server{,_error}.log`
+> - 云端 launcher 的 `COMFY_ROOT` → 已改为 portable
+>
+> §24.8 那张"生产未动的证明"对照表（8188 PID 18436 等）属于当时的事实，不必回改。
+
+**测试环境清理**：`ComfyUI_windows_portable_torch211_flash_test` 已在 E: 的 TRELLIS 原生路线完整验证后删除。它曾承载特定 FlashAttention wheel，但当前生产不依赖 FlashAttention；其 TRELLIS 权重、工作流和 8199 的五张流程图已迁入 `E:\python\qwenimage`。现在仅保留 portable 这一个 H3 生产实例目录。
+
+**风险**：py3.13 / torch 2.13 是本栈的**新组合**（§18–19 的生产验证在 py3.12/torch 2.10 上做的）。本次单次真实出片通过，但**未做多 prompt/seed 回归**，也**未测长片（10s/240 帧）**。
+
+### 27.8 教训
+
+1. **"进程活着"不等于"环境可用"。** 要实际执行 `import` 才知道 venv 是否还有效 —— 活尸体最危险，因为它掩盖了重启即死的真相。
+2. **日志里没有某条记录，不等于那件事没发生。** SolAttn 关着 `verbose`，日志本来就干净；换 triton 编译缓存才拿到硬证据。
+3. **判"可否删除"要看两条独立证据链**：生产是否在用 + 还有没有别的业务线需要它。本轮先后靠这条保住了 `ComfyUI_windows_portable`（生产模型库）与 `ComfyUI_sage3_py312`（当时的生产实例）——两者名字都极易误导（`portable` 像备用副本、`sage3` 像废弃实验）。
+4. **"重建"前先问"现有的是否本来就好"。** 用户原计划重建 venv，勘察后发现 `portable` 完好且**本就是原生产环境**，直接回退即可 —— 省掉整套重装。
+5. **避免靠导入顺序侥幸的 patch 共存。** 两个模块 patch 同一个 `PackedLayout.__init__`，谁赢取决于谁先 import。正确做法是查清生产图是否需要其中之一，把不需要的移走。

@@ -33,7 +33,8 @@ def _quant_kernel(
 
     s = tl.max(tl.abs(x), axis=1) / 127.0
     s_safe = tl.where(s > 1e-8, s, 1e-8)
-    xi = tl.extra.cuda.libdevice.round(x / s_safe[:, None])
+    val_to_round = x / s_safe[:, None]
+    xi = tl.where(val_to_round >= 0, (val_to_round + 0.5).to(tl.int32).to(tl.float32), (val_to_round - 0.5).to(tl.int32).to(tl.float32))
     xi = tl.minimum(tl.maximum(xi, -127.0), 127.0).to(tl.int8)
 
     offs_out = ((batch * TP + rows[:, None]).to(tl.int64) * H + head) * D + d[None, :]
@@ -57,4 +58,59 @@ def quantize_bthd(x, mean=None, rows=16, num_warps=4, out_rows=None):
     return xi, xs
 
 
-__all__ = ["quantize_bthd"]
+@triton.jit
+def _quant_v_kernel(
+    v_ptr, scale_ptr, vi_ptr,
+    T,
+    TP,
+    s_b, s_t, s_h,
+    H: tl.constexpr,
+    D: tl.constexpr,
+    ROWS: tl.constexpr,
+):
+    row_tile, batch_head = tl.program_id(0), tl.program_id(1)
+    batch, head = batch_head // H, batch_head % H
+    rows = row_tile * ROWS + tl.arange(0, ROWS)
+    d = tl.arange(0, D)
+    valid = rows < T
+
+    x = tl.load(
+        v_ptr + batch * s_b + rows[:, None].to(tl.int64) * s_t + head * s_h + d[None, :],
+        mask=valid[:, None], other=0.0,
+    ).to(tl.float32)
+    s = tl.load(scale_ptr + batch_head * D + d)
+
+    val_to_round = x / s[None, :]
+    xi = tl.where(val_to_round >= 0, (val_to_round + 0.5).to(tl.int32).to(tl.float32),
+                  (val_to_round - 0.5).to(tl.int32).to(tl.float32))
+    xi = tl.minimum(tl.maximum(xi, -127.0), 127.0).to(tl.int8)
+    offs = ((batch * TP + rows[:, None]).to(tl.int64) * H + head) * D + d[None, :]
+    tl.store(vi_ptr + offs, xi, mask=valid[:, None])
+
+
+def quantize_v_per_channel(v, rows=16, num_warps=4, out_rows=None, absmax=None):
+    """INT8 V with one scale per (head, channel).
+
+    PV is out[m, d] = sum_k P[m, k] V[k, d], so a per-channel V scale and a
+    per-row P scale both factor straight out of the int32 dot.
+
+    ``absmax`` is V's per-(head, channel) |max| as [B, H, D]. Pass it in from a
+    pass that already reads V; computing it here costs an extra full read.
+    """
+    B, T, H, D = v.shape
+    TP = T if out_rows is None else int(out_rows)
+    if absmax is None:
+        absmax = v.abs().amax(dim=1)
+    scale = absmax.float().div(127.0).clamp_min_(1e-8)                 # [B, H, D]
+    scale = scale.reshape(B * H, D).contiguous()
+    vi = torch.empty((B, TP, H, D), device=v.device, dtype=torch.int8)
+    grid = (triton.cdiv(T, rows), B * H)
+    _quant_v_kernel[grid](
+        v, scale, vi,
+        T, TP, v.stride(0), v.stride(1), v.stride(2), H, D, rows,
+        num_warps=num_warps,
+    )
+    return vi, scale
+
+
+__all__ = ["quantize_bthd", "quantize_v_per_channel"]

@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -47,6 +49,7 @@ def _request_deepseek(api_key, base_url, model, system_prompt, user_prompt, temp
             {"role": "user", "content": user_prompt},
         ],
         "temperature": temperature,
+        "thinking": {"type": "disabled"},
         "stream": False,
     }).encode("utf-8")
     request = urllib.request.Request(
@@ -58,8 +61,14 @@ def _request_deepseek(api_key, base_url, model, system_prompt, user_prompt, temp
         },
         method="POST",
     )
+    # Bypass the system proxy only for DeepSeek's official domestic endpoint.
+    proxy_handler = (urllib.request.ProxyHandler({})
+                     if urllib.parse.urlsplit(base_url).hostname == "api.deepseek.com"
+                     else urllib.request.ProxyHandler())
+    opener = urllib.request.build_opener(proxy_handler)
+    started = time.perf_counter()
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with opener.open(request, timeout=180) as response:
             result = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
@@ -69,6 +78,7 @@ def _request_deepseek(api_key, base_url, model, system_prompt, user_prompt, temp
     choices = result.get("choices") or []
     if not choices or not choices[0].get("message", {}).get("content"):
         raise RuntimeError("DeepSeek API returned no prompt content")
+    logging.info("H3 DeepSeek %s completed in %.2fs", model, time.perf_counter() - started)
     return choices[0]["message"]["content"].strip()
 
 

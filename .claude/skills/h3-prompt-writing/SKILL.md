@@ -18,13 +18,22 @@ workflow) or **review** (show the prompt, let the user check or edit it, then wr
 ### 2. Pick the input mode
 - **T2VA** (text-to-video) is the default when the user gives text only.
 - **I2VA / FL2VA / L2VA** when they provide a first frame and/or last frame image.
-- **Ref2VA** when they provide full references (images + video + audio).
+- **Ref2VA** when they provide visual or audiovisual references for identity, scene,
+  style, or motion; images alone are sufficient. Reference images are not
+  automatically first/last frames. Only name asset types the workflow actually receives.
 
 Say in one line which mode you picked before writing.
 
 ### 3. Write the final prompt
 Follow `references/base-en.txt` (T2VA/I2VA/FL2VA/L2VA) or `references/ref-en.txt`
 (Ref2VA). Preserve exact field names, section order, labels, and timing notation.
+For dialogue performance, emotion, singing, or humming, also read the community
+cases in `references/base-en.txt` Section 6; Ref2VA shares those preservation rules.
+Treat the cases as user-supplied examples, not a verified tag catalog.
+For timed action, screen direction, or a requested single take, apply Section 7 of
+`references/base-en.txt`. Read `references/action-continuity.md` for the user's
+five-second rooftop example, its continuity issues, and a reusable planning format.
+Beat boundaries are not cuts; do not turn a four-beat single take into four shots.
 
 ### 4. Show the final prompt
 Always print the complete final prompt in a fenced block so the user can read it.
@@ -76,6 +85,21 @@ in the order shown in `references/base-en.txt`. Ref2VA uses `subject_definitions
   the exact point where referenced content appears.
 - Avoid plot summaries, unresolved reference labels, and timing that does not match the
   requested duration.
+- Carry the requested video duration into the rewrite brief explicitly (for example,
+  “这是一个 8 秒的视频”). Budget actions, dialogue, breathing, and pauses together;
+  an eight-second clip is not the same as eight sampling steps. Do not silently
+  shorten supplied dialogue or change the requested duration to fit a long example.
+- For a supplied action timeline, preserve the intended action chain, duration,
+  identities, and shot count. Check screen positions, facing versus travel direction,
+  prop states, causal sound timing, and the final state against the restrictions.
+  Flag conflicts or overload and offer a concrete revision; do not silently remove
+  key actions, insert cuts, lengthen the clip, or change sampling settings.
+- Preserve user-authored performance tags and intentional delivery spellings such as
+  stutters, stretched vowels, and ellipses. Describe visible acting and vocal delivery
+  in prose as well; do not assume a tag alone guarantees an emotion or a voice.
+- When input ends at a heading such as “Tag” without the promised list, use only
+  examples actually supplied and ask for the missing list if it is needed. Do not
+  invent entries or describe community reports as locally validated results.
 
 ## Notes
 - MiniMax H3 has no dedicated "Text to Video" node: T2V is `MiniMaxH3ImageToVideo` with

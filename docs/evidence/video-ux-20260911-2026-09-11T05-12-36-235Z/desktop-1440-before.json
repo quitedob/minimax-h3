@@ -1,0 +1,26 @@
+{
+  "geometry": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "documentWidth": 1440,
+    "queue": "运行中 0 · 排队 0 · 共 0 个任务 · 视频 17 个",
+    "title": "MiniMax H3 · Video Queue"
+  },
+  "errors": [],
+  "requests": [
+    {
+      "url": "https://video.geekq.xyz:552/video",
+      "status": 200
+    },
+    {
+      "url": "https://video.geekq.xyz:552/queue",
+      "status": 200
+    },
+    {
+      "url": "https://video.geekq.xyz:552/h3/files",
+      "status": 200
+    }
+  ]
+}

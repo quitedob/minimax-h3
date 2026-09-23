@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Public desktop/mobile GET smoke plus exactly one eight-second AI preview",
+    "pass": true,
+    "aiElapsedMs": 3343,
+    "generationRequests": 0
+  }
+]

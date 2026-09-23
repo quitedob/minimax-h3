@@ -1,0 +1,112 @@
+[
+  {
+    "path": "F:\\python\\h3\\ComfyUI_sage3_py312\\output\\video\\web_bench_h3_turbo_v4_8step_cold_00001_.mp4",
+    "bytes": 1593750,
+    "video_codec": "h264",
+    "width": 864,
+    "height": 480,
+    "fps": 24.0,
+    "container_duration_s": 5.167,
+    "decoded_frames": 124,
+    "frames": {
+      "10": {
+        "std": 61.35049261181867,
+        "unique_colors": 63398,
+        "mean_rgb": [
+          92.82424527391976,
+          79.13166473765432,
+          30.217744502314815
+        ]
+      },
+      "60": {
+        "std": 64.5125275170737,
+        "unique_colors": 61495,
+        "mean_rgb": [
+          114.91605420524691,
+          91.89054783950617,
+          35.84490017361111
+        ]
+      },
+      "120": {
+        "std": 69.26739064356059,
+        "unique_colors": 58063,
+        "mean_rgb": [
+          106.70054735725309,
+          93.62819010416666,
+          51.63138744212963
+        ]
+      }
+    },
+    "motion_mad": {
+      "1": 11.672159194946289,
+      "5": 22.969772338867188,
+      "20": 28.750173568725586
+    },
+    "audio": {
+      "codec": "aac",
+      "sample_rate": 32000,
+      "channels": 2,
+      "decoded_samples": 165888,
+      "duration_s": 5.184,
+      "finite": true,
+      "rms": 0.04708433109646196,
+      "peak": 0.26433318853378296
+    },
+    "contact_sheet": "F:\\python\\h3\\comfyui_download\\web_bench_h3_turbo_v4_8step_cold_00001__contact.jpg"
+  },
+  {
+    "path": "F:\\python\\h3\\ComfyUI_sage3_py312\\output\\video\\web_bench_h3_turbo_v4_8step_warm_00001_.mp4",
+    "bytes": 1651984,
+    "video_codec": "h264",
+    "width": 864,
+    "height": 480,
+    "fps": 24.0,
+    "container_duration_s": 5.167,
+    "decoded_frames": 124,
+    "frames": {
+      "10": {
+        "std": 60.54346817057058,
+        "unique_colors": 60920,
+        "mean_rgb": [
+          113.30520109953704,
+          92.12571132330247,
+          31.077898341049384
+        ]
+      },
+      "60": {
+        "std": 54.788669444165095,
+        "unique_colors": 58881,
+        "mean_rgb": [
+          82.62772955246913,
+          67.77561246141975,
+          26.4104793595679
+        ]
+      },
+      "120": {
+        "std": 62.397907938624996,
+        "unique_colors": 71721,
+        "mean_rgb": [
+          96.85291763117284,
+          82.68035059799382,
+          33.49029706790123
+        ]
+      }
+    },
+    "motion_mad": {
+      "1": 16.206893920898438,
+      "5": 25.73495101928711,
+      "20": 40.260074615478516
+    },
+    "audio": {
+      "codec": "aac",
+      "sample_rate": 32000,
+      "channels": 2,
+      "decoded_samples": 165888,
+      "duration_s": 5.184,
+      "finite": true,
+      "rms": 0.04172077956557268,
+      "peak": 0.20227473974227905
+    },
+    "contact_sheet": "F:\\python\\h3\\comfyui_download\\web_bench_h3_turbo_v4_8step_warm_00001__contact.jpg"
+  }
+]
